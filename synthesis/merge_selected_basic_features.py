@@ -145,9 +145,10 @@ class FactorMerger:
         self.merged_period_dir = self.merged_dir / period_name
         self.merged_period_dir.mkdir(parents=True, exist_ok=True)
         
-        self._merge_one_period(period_name)
-        self._test_predicted(period_name)
-        self._eval_predicted(date_start, date_end, period_name)
+        status = self._merge_one_period(period_name)
+        if status == 0:
+            self._test_predicted(period_name)
+            self._eval_predicted(date_start, date_end, period_name)
     
     def _merge_one_period(self, period_name):
         """
@@ -174,7 +175,7 @@ class FactorMerger:
         # 检查最终选定的因子是否存在
         if not os.path.exists(final_selected_factors_path):
             print(f"未找到期间 {period_name} 的最终选定因子")
-            return None
+            return 1
         
         # 加载最终选定的因子
         final_selected_factors = pd.read_csv(final_selected_factors_path)
@@ -191,6 +192,7 @@ class FactorMerger:
         factor_scaled.to_parquet(output_path)
         
         print(f"合并因子已保存至 {output_path}")
+        return 0
         
     def _process_groups_parallel(self, grouped, period_name, max_workers=None):
         """

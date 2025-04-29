@@ -161,6 +161,10 @@ class TradeSelector:
             
         # 加载评估结果并扩展指标
         eval_res = pd.read_csv(path)
+        print(eval_res)
+        if len(eval_res) == 0:
+            print(f'Period: {period_name}交易方式的评估结果为空（当期没有基础因子入选）')
+            return None
         eval_res = extend_metrics(eval_res)  # 计算扩展指标
             
         # 应用筛选函数选择最佳交易方法

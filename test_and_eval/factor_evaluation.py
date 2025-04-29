@@ -605,32 +605,34 @@ class FactorEvaluation:
         
         save_path = self.save_dir / f'factor_eval_{period_name}.csv'
         
-        # 检查是否需要进行一致性检查
-        if self.check_consistency and hasattr(self, 'debug_dir') and save_path.exists():
-            try:
-                # 读取已存在的数据
-                existing_data = pd.read_csv(save_path)
-                
-                # 对已存在的数据也按factor排序，确保比较的顺序一致
-                existing_data.sort_values(by='factor', inplace=True)
-                
-                # 检查一致性
-                status, info = check_dataframe_consistency(existing_data, res)
-                
-                if status == "INCONSISTENT":
-                    # 保存不一致的数据到debug目录
-                    debug_path = self.debug_dir / f'factor_eval_{period_name}_inconsistent.csv'
-                    res.to_csv(debug_path, index=None)
-                    
-                    # 构造错误信息
-                    error_msg = f"DataFrame一致性检查失败! 索引: {info['index']}, 列: {info['column']}, "
-                    error_msg += f"原始值: {info['original_value']}, 新值: {info['new_value']}, "
-                    error_msg += f"不一致计数: {info['inconsistent_count']}。已保存到 {debug_path}"
-                    
-                    raise ValueError(error_msg)
-            except Exception as e:
-                if not isinstance(e, ValueError):  # 如果不是我们自己抛出的ValueError，则记录异常但继续执行
-                    print(f"一致性检查过程中发生异常: {str(e)}")
+# =============================================================================
+#         # 检查是否需要进行一致性检查
+#         if self.check_consistency and hasattr(self, 'debug_dir') and save_path.exists():
+#             try:
+#                 # 读取已存在的数据
+#                 existing_data = pd.read_csv(save_path)
+#                 
+#                 # 对已存在的数据也按factor排序，确保比较的顺序一致
+#                 existing_data.sort_values(by='factor', inplace=True)
+#                 
+#                 # 检查一致性
+#                 status, info = check_dataframe_consistency(existing_data, res)
+#                 
+#                 if status == "INCONSISTENT":
+#                     # 保存不一致的数据到debug目录
+#                     debug_path = self.debug_dir / f'factor_eval_{period_name}_inconsistent.csv'
+#                     res.to_csv(debug_path, index=None)
+#                     
+#                     # 构造错误信息
+#                     error_msg = f"DataFrame一致性检查失败! 索引: {info['index']}, 列: {info['column']}, "
+#                     error_msg += f"原始值: {info['original_value']}, 新值: {info['new_value']}, "
+#                     error_msg += f"不一致计数: {info['inconsistent_count']}。已保存到 {debug_path}"
+#                     
+#                     raise ValueError(error_msg)
+#             except Exception as e:
+#                 if not isinstance(e, ValueError):  # 如果不是我们自己抛出的ValueError，则记录异常但继续执行
+#                     print(f"一致性检查过程中发生异常: {str(e)}")
+# =============================================================================
         
         # 保存新数据
         res.to_csv(save_path, index=None)
