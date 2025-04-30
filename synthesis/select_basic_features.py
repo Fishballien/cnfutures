@@ -73,6 +73,7 @@ class FactorSelector:
         
         # 筛选参数
         self.keep_best_test_by = self.config['best_test']['metric']
+        self.test_name_range = self.config.get('test_name_range')
         self.filter_func_name = self.config['first_filter']['func_name']
         self.filter_params = self.config['first_filter']['params']
         self.cluster_params = self.config['cluster']
@@ -148,6 +149,10 @@ class FactorSelector:
             
             # 筛选当前原始因子的数据
             org_fac_data = eval_res[eval_res['org_fac'] == org_fac].copy()
+            
+            # 筛选测试方法
+            if self.test_name_range is not None:
+                org_fac_data = org_fac_data[org_fac_data['test_name'].apply(lambda x: x in self.test_name_range)]
             
             # 保留最佳测试版本
             keep_best_test_df = select_best_test_name(

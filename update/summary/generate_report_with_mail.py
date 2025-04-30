@@ -40,6 +40,7 @@ import argparse
 import yaml
 import random
 import string
+import traceback
 
 # %% add sys path
 file_path = Path(__file__).resolve()
@@ -510,14 +511,15 @@ def generate_integrated_pdf_report(
             # Make plots smaller
             for ax in axes:
                 ax.tick_params(labelsize=8)
-                if hasattr(ax, 'title') and ax.title is not None:
-                    ax.title.set_fontsize(10)
-                    ax.title.set_pad(10)
+                # if hasattr(ax, 'title') and ax.title is not None:
+                #     ax.title.set_fontsize(10)
+                    # ax.title.set_pad(10)
                 
                 # Reduce legend size if it exists
-                if ax.get_legend() is not None:
-                    ax.get_legend().set_fontsize(7)
+                # if ax.get_legend() is not None:
+                #     ax.get_legend().set_fontsize(7)
         except Exception as e:
+            traceback.print_exc()
             axes[0].text(0.5, 0.5, f"Error generating price and positions plot: {str(e)}", 
                     ha='center', va='center', fontsize=10, color='red')
             axes[0].set_title("Price and Positions (Error)", fontsize=10)
@@ -701,50 +703,53 @@ def generate_random_string(length=10):
     return random_string
 
 
-
-def main():
+def generate_report(
+    config_name,
+    target_date=None,
+    delay=1,
+    lookback=30,
+    plot_start=None,
+    send_email=False
+):
     """
-    Main function to run the report generation process.
+    Generate a daily model performance report with specified parameters.
     
-    Parses command line arguments, loads configuration, and generates the report
-    according to the specified parameters.
+    Args:
+        config_name (str): Configuration name (without extension)
+        target_date (str, optional): Target date in format YYYY-MM-DD. 
+                                    If not specified, uses today minus delay days.
+        delay (int, optional): Number of days to go back from today (if target_date not specified).
+                              Defaults to 1.
+        lookback (int, optional): Number of days to look back from target_date to determine period_start.
+                                 Defaults to 30.
+        plot_start (str, optional): Plot start date for cumulative returns in format YYYY-MM-DD.
+                                   If not specified, uses period_start.
+        send_email (bool, optional): Whether to send the generated report via email.
+                                    Defaults to False.
+    
+    Returns:
+        int: 0 if successful, 1 if failed
     """
-    parser = argparse.ArgumentParser(description='Generate and email a daily model performance report')
-    parser.add_argument('-c', '--config', type=str, required=True, 
-                        help='Configuration name (without extension)')
-    parser.add_argument('-t', '--target_date', type=str, default=None, 
-                        help='Target date in format YYYY-MM-DD. If not specified, uses today minus delay days.')
-    parser.add_argument('-d', '--delay', type=int, default=1, 
-                        help='Number of days to go back from today (if target_date not specified)')
-    parser.add_argument('-lb', '--lookback', type=int, default=30, 
-                        help='Number of days to look back from target_date to determine period_start')
-    parser.add_argument('-ps', '--plot_start', type=str, default=None,
-                        help='Plot start date for cumulative returns in format YYYY-MM-DD')
-    parser.add_argument('-e', '--email', action='store_true', 
-                        help='Send the generated report via email')
-    
-    args = parser.parse_args()
-    
     # Initialize logger
     log = FishStyleLogger()
     
     # Calculate actual target_date (if not specified)
-    actual_target_date = args.target_date
+    actual_target_date = target_date
     if actual_target_date is None:
         actual_target_date = datetime.strptime(
-            get_previous_n_trading_day(datetime.today().strftime('%Y%m%d'), args.delay),
+            get_previous_n_trading_day(datetime.today().strftime('%Y%m%d'), delay),
             '%Y%m%d'
         ).strftime('%Y-%m-%d')
     
     # Calculate period_start (lookback days from target_date)
     target_date_obj = datetime.strptime(actual_target_date, '%Y-%m-%d')
-    period_start_date = target_date_obj - timedelta(days=args.lookback)
+    period_start_date = target_date_obj - timedelta(days=lookback)
     period_start = period_start_date.strftime('%Y-%m-%d')
     
     # Use the same period_start for plot_start if not specified
-    plot_start = args.plot_start if args.plot_start else period_start
+    plot_start = plot_start if plot_start else period_start
     
-    log.info(f"Report period: {period_start} to {actual_target_date} (lookback: {args.lookback} days)")
+    log.info(f"Report period: {period_start} to {actual_target_date} (lookback: {lookback} days)")
     log.info(f"Plot start date for cumulative returns: {plot_start}")
     
     # Load path configuration
@@ -752,7 +757,7 @@ def main():
     
     # Load configuration file
     workflow_param_dir = Path(path_config['param'])
-    config_path = workflow_param_dir / 'daily_report' / f'{args.config}.yaml'
+    config_path = workflow_param_dir / 'daily_report' / f'{config_name}.yaml'
     
     with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
@@ -788,7 +793,7 @@ def main():
     log.success(f"PDF report generated successfully: {pdf_path}")
     
     # Send email if requested
-    if args.email and 'email' in config:
+    if send_email and 'email' in config:
         email_result = send_email_with_pdf(
             pdf_path=pdf_path,
             email_config=config['email'],
@@ -798,10 +803,44 @@ def main():
         
         if not email_result:
             log.warning("Email sending failed, but PDF was generated successfully")
-    elif args.email:
+    elif send_email:
         log.warning("Email configuration not found in config file")
     
     return 0
+
+
+def main():
+    """
+    Main function to run the report generation process.
+    
+    Parses command line arguments and calls the generate_report function
+    with the parsed parameters.
+    """
+    parser = argparse.ArgumentParser(description='Generate and email a daily model performance report')
+    parser.add_argument('-c', '--config', type=str, required=True, 
+                        help='Configuration name (without extension)')
+    parser.add_argument('-t', '--target_date', type=str, default=None, 
+                        help='Target date in format YYYY-MM-DD. If not specified, uses today minus delay days.')
+    parser.add_argument('-d', '--delay', type=int, default=1, 
+                        help='Number of days to go back from today (if target_date not specified)')
+    parser.add_argument('-lb', '--lookback', type=int, default=30, 
+                        help='Number of days to look back from target_date to determine period_start')
+    parser.add_argument('-ps', '--plot_start', type=str, default=None,
+                        help='Plot start date for cumulative returns in format YYYY-MM-DD')
+    parser.add_argument('-e', '--email', action='store_true', 
+                        help='Send the generated report via email')
+    
+    args = parser.parse_args()
+    
+    # Call the new function with parsed arguments
+    return generate_report(
+        config_name=args.config,
+        target_date=args.target_date,
+        delay=args.delay,
+        lookback=args.lookback,
+        plot_start=args.plot_start,
+        send_email=args.email
+    )
 
 
 # %%
