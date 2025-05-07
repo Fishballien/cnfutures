@@ -33,7 +33,7 @@ from utils.dirutils import load_path_config
 
 
 # %%
-eval_name = 'basis_pct_250416_org_batch_250419_batch_test_v1'
+eval_name = 'Batch18_250425_avg_imb01_org_ts_scale_only_batch_test_v1'
 period = '160101_250101'
 
 
@@ -488,6 +488,6 @@ def generate_summary_table(data, metric, percentile, output_dir):
 run_analysis(
     df=eval_res,
     summary_dir=summary_dir,
-    metrics=['net_sharpe_ratio', 'net_calmar_ratio', 'net_sharpe_ratio_long_only'],
+    metrics=['net_sharpe_ratio', 'net_calmar_ratio'],
     percentiles=[90, 75]
 )
