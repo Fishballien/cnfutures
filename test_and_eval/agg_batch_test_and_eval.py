@@ -37,10 +37,11 @@ from utils.logutils import FishStyleLogger
 # Modified AggTestEval class to support batch testing
 class AggTestEval:
     
-    def __init__(self, agg_eval_name, test_wkr, eval_wkr):
+    def __init__(self, agg_eval_name, test_wkr, eval_wkr, skip_exists=True):
         self.agg_eval_name = agg_eval_name
         self.test_wkr = test_wkr
         self.eval_wkr = eval_wkr
+        self.skip_exists = skip_exists
 
         self.log = FishStyleLogger()
         self._load_paths()
@@ -124,7 +125,7 @@ class AggTestEval:
                             continue
                             
                         self.log.info(f'Start Testing {test_name}: factors {count1}, tested {count2}, ratio {ratio}')
-                        tester.test_multi_factors()
+                        tester.test_multi_factors(skip_exists=self.skip_exists)
                         self.log.success(f'Test Finished {test_name} for {process_name}')
                         
                         # Store test result info for evaluation
@@ -174,7 +175,7 @@ class AggTestEval:
                         self.log.info(f'Skip Testing: factors {count1}, tested {count2}, ratio {ratio}')
                         continue
                     self.log.info(f'Start Testing: factors {count1}, tested {count2}, ratio {ratio}')
-                    tester.test_multi_factors()
+                    tester.test_multi_factors(skip_exists=self.skip_exists)
                     self.log.success(f'Test Finished: {process_name}')
                     
                     # Store test result info for evaluation

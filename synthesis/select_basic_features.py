@@ -246,76 +246,79 @@ class FactorSelector:
             # 保存到原始因子目录
             with open(all_factors_path, 'w', encoding='utf-8') as f:
                 json.dump(unique_factors, f, ensure_ascii=False, indent=4)
-        
-        # 创建结果目录
-        res_selected_test_info_dir = res_selected_test_dir / 'factor_info'
-        res_selected_test_plot_dir = res_selected_test_dir / 'plot'
-        res_selected_test_info_dir.mkdir(parents=True, exist_ok=True)
-        res_selected_test_plot_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 收集所有需要复制的文件对
-        file_pairs = []
-        
-        # 遍历所有需要复制的因子
-        for idx in top_factors.index:
-            test_name = top_factors.loc[idx, 'test_name']
-            tag_name = top_factors.loc[idx, 'tag_name']
-            process_name = top_factors.loc[idx, 'process_name']
-            factor_name = top_factors.loc[idx, 'factor']
-            
-            # 源目录路径
-            target_test_dir = self.test_dir / test_name / tag_name / process_name
-            
-            # 收集因子信息图表文件
-            factor_info_plot_dir = target_test_dir / 'factor_info'
-            factor_info_files = find_files_with_prefix(factor_info_plot_dir, factor_name)
-            
-            for file_name in factor_info_files:
-                source_file = factor_info_plot_dir / file_name
-                target_file = res_selected_test_info_dir / file_name
-                file_pairs.append((source_file, target_file))
-            
-            # 收集因子图表文件
-            factor_plot_source = target_test_dir / 'plot' / f'{factor_name}.jpg'
-            factor_plot_target = res_selected_test_plot_dir / f'{factor_name}.jpg'
-            
-            if factor_plot_source.exists():
-                file_pairs.append((factor_plot_source, factor_plot_target))
-            else:
-                print(f"警告: 因子图表文件不存在: {factor_plot_source}")
-        
-        # 使用多线程并行复制所有文件
-        if file_pairs:
-            print(f"开始并行复制 {len(file_pairs)} 个文件...")
-            start_time = time.time()
-            
-            # 使用ThreadPoolExecutor进行并行复制
-            with ThreadPoolExecutor(max_workers=min(len(file_pairs), 8)) as executor:
-                # 为每个文件对提交复制任务
-                future_to_file = {
-                    executor.submit(copy_file, src, dst): (src, dst) 
-                    for src, dst in file_pairs
-                }
                 
-                # 收集结果
-                success_count = 0
-                for future in as_completed(future_to_file):
-                    src, dst = future_to_file[future]
-                    try:
-                        result = future.result()
-                        if result:
-                            success_count += 1
-                            print(f"成功复制: {src.name}")
-                        else:
-                            print(f"复制失败: {src.name}")
-                    except Exception as e:
-                        print(f"复制 {src.name} 时发生异常: {e}")
+                
+        if self.config.get('copy_selected', True):
+        
+            # 创建结果目录
+            res_selected_test_info_dir = res_selected_test_dir / 'factor_info'
+            res_selected_test_plot_dir = res_selected_test_dir / 'plot'
+            res_selected_test_info_dir.mkdir(parents=True, exist_ok=True)
+            res_selected_test_plot_dir.mkdir(parents=True, exist_ok=True)
             
-            end_time = time.time()
-            duration = end_time - start_time
-            print(f"复制完成! 成功: {success_count}/{len(file_pairs)}, 用时: {duration:.2f} 秒")
-        else:
-            print("没有找到需要复制的文件。")
+            # 收集所有需要复制的文件对
+            file_pairs = []
+            
+            # 遍历所有需要复制的因子
+            for idx in top_factors.index:
+                test_name = top_factors.loc[idx, 'test_name']
+                tag_name = top_factors.loc[idx, 'tag_name']
+                process_name = top_factors.loc[idx, 'process_name']
+                factor_name = top_factors.loc[idx, 'factor']
+                
+                # 源目录路径
+                target_test_dir = self.test_dir / test_name / tag_name / process_name
+                
+                # 收集因子信息图表文件
+                factor_info_plot_dir = target_test_dir / 'factor_info'
+                factor_info_files = find_files_with_prefix(factor_info_plot_dir, factor_name)
+                
+                for file_name in factor_info_files:
+                    source_file = factor_info_plot_dir / file_name
+                    target_file = res_selected_test_info_dir / file_name
+                    file_pairs.append((source_file, target_file))
+                
+                # 收集因子图表文件
+                factor_plot_source = target_test_dir / 'plot' / f'{factor_name}.jpg'
+                factor_plot_target = res_selected_test_plot_dir / f'{factor_name}.jpg'
+                
+                if factor_plot_source.exists():
+                    file_pairs.append((factor_plot_source, factor_plot_target))
+                else:
+                    print(f"警告: 因子图表文件不存在: {factor_plot_source}")
+            
+            # 使用多线程并行复制所有文件
+            if file_pairs:
+                print(f"开始并行复制 {len(file_pairs)} 个文件...")
+                start_time = time.time()
+                
+                # 使用ThreadPoolExecutor进行并行复制
+                with ThreadPoolExecutor(max_workers=min(len(file_pairs), 8)) as executor:
+                    # 为每个文件对提交复制任务
+                    future_to_file = {
+                        executor.submit(copy_file, src, dst): (src, dst) 
+                        for src, dst in file_pairs
+                    }
+                    
+                    # 收集结果
+                    success_count = 0
+                    for future in as_completed(future_to_file):
+                        src, dst = future_to_file[future]
+                        try:
+                            result = future.result()
+                            if result:
+                                success_count += 1
+                                print(f"成功复制: {src.name}")
+                            else:
+                                print(f"复制失败: {src.name}")
+                        except Exception as e:
+                            print(f"复制 {src.name} 时发生异常: {e}")
+                
+                end_time = time.time()
+                duration = end_time - start_time
+                print(f"复制完成! 成功: {success_count}/{len(file_pairs)}, 用时: {duration:.2f} 秒")
+            else:
+                print("没有找到需要复制的文件。")
         
         # 保存筛选后的因子信息到CSV文件
         final_factors.to_csv(res_dir / 'final_selected_factors.csv', index=False)

@@ -42,11 +42,11 @@ def main():
     parser.add_argument('-a', '--agg_eval_name', type=str, help='agg_eval_name')
     parser.add_argument('-twkr', '--test_wkr', type=int, help='test_wkr')
     parser.add_argument('-ewkr', '--eval_wkr', type=int, help='eval_wkr')
-
+    parser.add_argument('-se', '--skip_exists', action='store_true', help='如果设置此参数，则跳过已存在的评估结果')
     args = parser.parse_args()
-    agg_eval_name, test_wkr, eval_wkr = args.agg_eval_name, args.test_wkr, args.eval_wkr
+    agg_eval_name, test_wkr, eval_wkr, skip_exists = args.agg_eval_name, args.test_wkr, args.eval_wkr, args.skip_exists
     
-    agg_test_eval = AggTestEval(agg_eval_name, test_wkr, eval_wkr)
+    agg_test_eval = AggTestEval(agg_eval_name, test_wkr, eval_wkr, skip_exists=skip_exists)
     agg_test_eval.run()
     
 

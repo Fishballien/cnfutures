@@ -102,7 +102,7 @@ class FactorMerger:
         self.result_dir = Path(self.path_config['result'])
         self.param_dir = Path(self.path_config['param']) / 'merge_selected_factors'
         self.test_dir = self.result_dir / 'test'
-        self.merged_dir = self.result_dir / 'merge_selected_factors' / merge_name
+        self.merged_dir = self.result_dir / 'merge_selected_factors' / f'{self.select_name}_{merge_name}'
         
         # 加载配置文件
         config_path = self.param_dir / f'{merge_name}.yaml'
