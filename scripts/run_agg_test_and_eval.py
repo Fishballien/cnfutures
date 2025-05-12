@@ -32,7 +32,7 @@ sys.path.append(str(project_dir))
 
 
 # %% import self-defined
-from test_and_eval.agg_test_and_eval import AggTestEval
+from test_and_eval.agg_batch_test_and_eval import AggTestEval
 
 
 # %% main
