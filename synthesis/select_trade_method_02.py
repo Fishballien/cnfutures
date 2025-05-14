@@ -19,6 +19,8 @@ import pandas as pd
 from functools import partial
 from datetime import datetime
 from typing import Union, Dict, Any
+import concurrent.futures
+from tqdm import tqdm
 
 
 # %% add sys path
@@ -68,7 +70,7 @@ class TradeSelector:
         self.param_dir = Path(self.path_config['param']) / 'select_trade_method'  # 参数目录
         
         # 创建结果存储目录结构
-        self.select_dir = self.result_dir / 'select_trade_method' / select_name  # 当前选择器的结果目录
+        self.select_dir = self.result_dir / 'select_trade_method' / f'{merge_name}_{select_name}'  # 当前选择器的结果目录
         self.selected_dir = self.select_dir / 'selected'  # 存储筛选结果的目录
         self.pos_dir = self.select_dir / 'pos'  # 存储持仓数据的目录
         self.selected_dir.mkdir(parents=True, exist_ok=True)  # 创建目录，如果已存在则不报错
@@ -291,11 +293,46 @@ class TradeSelector:
         pred_all.to_parquet(pred_all_path)
         print(f"已更新汇总预测数据: {pred_all_path}")
         
+# =============================================================================
+#     def test_predicted(self):
+#         """
+#         对预测结果进行回测验证
+#         
+#         根据配置文件中指定的测试列表，对生成的交易信号进行回测
+#         """
+#         process_name = None  # 回测过程名称，可以为空
+#         factor_data_dir = self.pos_dir  # 持仓数据目录
+#         result_dir = self.select_dir  # 结果保存目录
+#         params = self.config  # 配置参数
+#         
+#         # 获取测试列表
+#         test_list = params['test_list']
+#         for test_info in test_list:
+#             # 解析测试配置
+#             mode = test_info['mode']  # 测试模式：test或trade
+#             test_name = test_info['test_name']  # 测试名称
+#             
+#             # 根据模式选择测试类
+#             if mode == 'test':
+#                 # 连续信号测试类
+#                 test_class = FactorTesterByContinuous
+#             elif mode == 'trade':
+#                 # 离散信号测试类
+#                 test_class = FactorTesterByDiscrete
+#             else:
+#                 raise NotImplementedError(f"不支持的测试模式: {mode}")
+#         
+#             # 初始化测试器并执行测试
+#             ft = test_class(process_name, None, factor_data_dir, test_name=test_name, result_dir=result_dir)
+#             ft.test_one_factor(f'pos_{self.select_name}')
+#             print(f"已完成 {test_name} 测试，模式: {mode}")
+# =============================================================================
+
     def test_predicted(self):
         """
         对预测结果进行回测验证
         
-        根据配置文件中指定的测试列表，对生成的交易信号进行回测
+        根据配置文件中指定的测试列表，对生成的交易信号进行回测，使用多进程并行执行
         """
         process_name = None  # 回测过程名称，可以为空
         factor_data_dir = self.pos_dir  # 持仓数据目录
@@ -304,22 +341,63 @@ class TradeSelector:
         
         # 获取测试列表
         test_list = params['test_list']
-        for test_info in test_list:
-            # 解析测试配置
-            mode = test_info['mode']  # 测试模式：test或trade
-            test_name = test_info['test_name']  # 测试名称
-            
-            # 根据模式选择测试类
-            if mode == 'test':
-                # 连续信号测试类
-                test_class = FactorTesterByContinuous
-            elif mode == 'trade':
-                # 离散信号测试类
-                test_class = FactorTesterByDiscrete
-            else:
-                raise NotImplementedError(f"不支持的测试模式: {mode}")
         
-            # 初始化测试器并执行测试
-            ft = test_class(process_name, None, factor_data_dir, test_name=test_name, result_dir=result_dir)
-            ft.test_one_factor(f'pos_{self.select_name}')
-            print(f"已完成 {test_name} 测试，模式: {mode}")
+        # 使用ProcessPoolExecutor并行执行测试
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            # 提交所有测试任务，传递必要的参数给execute_test函数
+            future_to_test = {
+                executor.submit(
+                    execute_test, 
+                    test_info, 
+                    process_name, 
+                    factor_data_dir, 
+                    result_dir, 
+                    self.select_name
+                ): test_info for test_info in test_list
+            }
+            
+            # 获取执行结果，使用tqdm显示进度
+            total_tasks = len(future_to_test)
+            print(f"开始并行执行 {total_tasks} 个测试任务...")
+        
+            for future in tqdm(concurrent.futures.as_completed(future_to_test), total=total_tasks, desc="测试进度"):
+                try:
+                    result = future.result()
+                    print(result)
+                except Exception as e:
+                    test_info = future_to_test[future]
+                    print(f"测试 {test_info['test_name']} 执行失败: {str(e)}")
+                
+                
+def execute_test(test_info, process_name, factor_data_dir, result_dir, select_name):
+    """
+    执行单个测试任务的函数
+    
+    Args:
+        test_info: 测试配置信息
+        process_name: 回测过程名称
+        factor_data_dir: 持仓数据目录
+        result_dir: 结果保存目录
+        select_name: 选择器名称
+    
+    Returns:
+        str: 测试完成信息
+    """
+    # 解析测试配置
+    mode = test_info['mode']  # 测试模式：test或trade
+    test_name = test_info['test_name']  # 测试名称
+    
+    # 根据模式选择测试类
+    if mode == 'test':
+        # 连续信号测试类
+        test_class = FactorTesterByContinuous
+    elif mode == 'trade':
+        # 离散信号测试类
+        test_class = FactorTesterByDiscrete
+    else:
+        raise NotImplementedError(f"不支持的测试模式: {mode}")
+
+    # 初始化测试器并执行测试
+    ft = test_class(process_name, None, factor_data_dir, test_name=test_name, result_dir=result_dir)
+    ft.test_one_factor(f'pos_{select_name}')
+    return f"已完成 {test_name} 测试，模式: {mode}"

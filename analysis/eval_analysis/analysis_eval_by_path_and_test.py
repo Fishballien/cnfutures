@@ -33,7 +33,7 @@ from utils.dirutils import load_path_config
 
 
 # %%
-eval_name = 'Batch18_250425_avg_imb01_org_ts_scale_only_batch_test_v1'
+eval_name = 'batch_18_v1_batch_test_v2_icim'
 period = '160101_250101'
 
 

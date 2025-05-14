@@ -61,7 +61,7 @@ def run_rolling_factor_select(select_name, rolling_select_name, pstart='20230701
     path_config = load_path_config(project_dir)
     
     # Initialize directories
-    param_dir = Path(path_config['param']) / 'rolling_select_ts_trans'
+    param_dir = Path(path_config['param']) / 'rolling_multi_periods'
     
     # Load parameters
     params = toml.load(param_dir / f'{rolling_select_name}.toml')

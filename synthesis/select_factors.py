@@ -103,9 +103,9 @@ class FactorSelector:
         self.project_dir = project_dir
         self.path_config = load_path_config(self.project_dir)
         self.result_dir = Path(self.path_config['result'])
-        self.param_dir = Path(self.path_config['param']) / 'select_ts_trans'
+        self.param_dir = Path(self.path_config['param']) / 'select_factors'
         self.test_dir = self.result_dir / 'test'
-        self.select_dir = self.result_dir / 'select_ts_trans' / f'{self.eval_name}_{select_name}'
+        self.select_dir = self.result_dir / 'select_factors' / f'{eval_name}_{select_name}'
         
         # 加载配置文件
         config_path = self.param_dir / f'{select_name}.yaml'

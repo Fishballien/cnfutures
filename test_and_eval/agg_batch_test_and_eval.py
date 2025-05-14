@@ -104,6 +104,9 @@ class AggTestEval:
                             'date_end': date_end, 
                         }
                         
+                        # Store test result info for evaluation
+                        self.test_results.append((root_dir, tag_name, process_name, mode, test_name))
+                        
                         # Select test class based on mode
                         if mode == 'test':
                             test_class = FactorTesterByContinuous
@@ -128,8 +131,6 @@ class AggTestEval:
                         tester.test_multi_factors(skip_exists=self.skip_exists)
                         self.log.success(f'Test Finished {test_name} for {process_name}')
                         
-                        # Store test result info for evaluation
-                        self.test_results.append((root_dir, tag_name, process_name, mode, test_name))
                         
                     self.log.success(f'All Tests Finished for: {process_name}')
                 self.log.success(f'Root Finished: {root_dir}')
@@ -163,6 +164,9 @@ class AggTestEval:
                     'date_start': date_start,
                     'date_end': date_end, 
                 }
+                
+                # Store test result info for evaluation
+                self.test_results.append((root_dir, tag_name, process_name, mode, test_name))
         
                 for process_name in process_name_list:
                     self.log.info(f'Test Started: {process_name}')
@@ -178,8 +182,6 @@ class AggTestEval:
                     tester.test_multi_factors(skip_exists=self.skip_exists)
                     self.log.success(f'Test Finished: {process_name}')
                     
-                    # Store test result info for evaluation
-                    self.test_results.append((root_dir, tag_name, process_name, mode, test_name))
                     
                 self.log.success(f'Root Finished: {root_dir}')
 
