@@ -42,13 +42,14 @@ from utils.datautils import add_dataframe_to_dataframe_reindex
 
 
 # %%
-model_name = 'avg_agg_250218_3_fix_tfe_by_trade_net_v4'
+model_name = 'avg_agg_250218_3_fix_fut_fr15_by_trade_net_v18'
 suffix = '1_2_0'
 process_name = 'final_predict'
 tag_name = 'test_trade_rules'
-test_name = 'trade_ver0_futtwap_sp1min_s240d_icim'
+test_name = 'trade_ver3_3_futtwap_sp1min_s240d_icim_v6'
 pred_name = f'predict_{model_name}'
-multi_test_name = 'trade_ver3_futtwap_sp1min_s240d_icim'
+multi_test_name = 'trade_ver3_3_futtwap_sp1min_s240d_icim_v6'
+multi_test_func_name = 'trade_rule_by_trigger_v3_4'
 final_test_list = [
     {
      'mode': 'trade',
@@ -60,9 +61,9 @@ fee = 0.00024
 
 fstart = '20150101'
 pstart = '20170101'
-puntil = '20250201'
+puntil = '20250515'
 window_kwargs = {'months': 96}
-rrule_kwargs = {'freq': 'Y', 'interval': 1}
+rrule_kwargs = {'freq': 'm', 'interval': 1, 'bymonthday': 1}
 end_by = 'date'
 
 version_name = f"v6_{suffix}"
@@ -74,24 +75,26 @@ version_params = {
     'net_burke_ratio': 5,
     }
 
-version_name = f"v7_{suffix}"
-version_params = {
-    # 'neighbor': True,
-    'net_sharpe_ratio': 1.9,
-    'profit_per_trade': 0,
-    'net_max_dd': 1,
-    'net_burke_ratio': 0,
-    }
-
-
-version_name = f"v8_{suffix}"
-version_params = {
-    'neighbor': True,
-    'net_sharpe_ratio': 1.9,
-    'profit_per_trade': 0,
-    'net_max_dd': 1,
-    'net_burke_ratio': 0,
-    }
+# =============================================================================
+# version_name = f"v7_{suffix}"
+# version_params = {
+#     # 'neighbor': True,
+#     'net_sharpe_ratio': 1.9,
+#     'profit_per_trade': 0,
+#     'net_max_dd': 1,
+#     'net_burke_ratio': 0,
+#     }
+# 
+# 
+# version_name = f"v8_{suffix}"
+# version_params = {
+#     'neighbor': True,
+#     'net_sharpe_ratio': 1.9,
+#     'profit_per_trade': 0,
+#     'net_max_dd': 1,
+#     'net_burke_ratio': 0,
+#     }
+# =============================================================================
 
 
 # %%
@@ -120,19 +123,16 @@ closethres_list = [-0.99, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 
 
 
 # %% test
-# =============================================================================
-# for openthres in tqdm(openthres_list, desc='test_open'):
-#     for closethres in closethres_list:
-#         test_pr = copy.deepcopy(test_param)
-#         test_pr['trade_rule_param']['openthres'] = openthres
-#         test_pr['trade_rule_param']['closethres'] = closethres
-#         
-#         new_test_name = f'{test_name}_op{openthres}_cl{closethres}'
-#         
-#         tester = FactorTesterByDiscrete(process_name, tag_name, factor_data_dir, test_name=new_test_name, 
-#                                         result_dir=result_dir, params=test_pr)
-#         tester.test_multi_factors()
-# =============================================================================
+for openthres in tqdm(openthres_list, desc='test_open'):
+    for closethres in closethres_list:
+        test_pr = copy.deepcopy(test_param)
+        test_pr['trade_rule_param']['threshold_combinations'] = [[openthres, closethres]]
+        
+        new_test_name = f'{test_name}_op{openthres}_cl{closethres}'
+        
+        tester = FactorTesterByDiscrete(process_name, tag_name, factor_data_dir, test_name=new_test_name, 
+                                        result_dir=result_dir, params=test_pr)
+        tester.test_multi_factors()
 
 
 # %%
@@ -285,7 +285,7 @@ def filter_conditions(res_df, date_start, date_end, to_plot=[]):
         plt.close()  # 关闭当前图像，防止重叠
         
     test_pr = copy.deepcopy(test_param)
-    test_pr['trade_rule_name'] = 'trade_rule_by_trigger_v3'
+    test_pr['trade_rule_name'] = multi_test_func_name
     test_pr['trade_rule_param'] = {'threshold_combinations': valid_pairs}
     
     new_test_name = f'{multi_test_name}_{version_name}_{period}'

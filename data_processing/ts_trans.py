@@ -23,7 +23,7 @@ from utils.timeutils import parse_time_string
 def ts_normalize(factor, param):
     scale_window = param.get('scale_window')
     if scale_window is None:
-        return factor
+        return (factor - 0.5) * 2
     scale_quantile = param['scale_quantile']
     sp = param['sp']
     scale_method = param.get('scale_method', 'minmax_scale')

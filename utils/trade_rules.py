@@ -826,6 +826,164 @@ def trade_rule_by_trigger_v3_4(signal, threshold_combinations, time_threshold_mi
 
 
 # %%
+@jit(nopython=True)
+def _compute_positions_with_time_gaps_3_4_t1(signal_values, time_index_values, openthres, closethres):
+    """
+    Numba-accelerated core function to compute positions for a single threshold combination with T+1 trading rule.
+    - 当天有信号就开多头
+    - 如果当天触发平仓信号，则第二天开盘时平仓
+    - 如果触发平仓但第二天第一个信号又符合开仓条件，则继续持仓
+    """
+    positions = np.full(len(signal_values), np.nan)
+    current_position = 0
+    has_valid_signal = False
+    close_next_day = False
+    current_day = -1
+    first_bar_of_day = np.zeros(len(signal_values), dtype=np.bool_)
+    
+    # 预处理: 识别每天的第一个交易时间点(9:31)
+    for i in range(len(time_index_values)):
+        day = time_index_values[i] // 10000  # 提取日期部分 (YYYYMMDD)
+        time = time_index_values[i] % 10000  # 提取时间部分 (HHMM)
+        
+        if day != current_day:
+            current_day = day
+            # 标记每天的第一个交易点
+            first_bar_of_day[i] = True
+    
+    # 重置, 用于主循环
+    current_day = -1
+    
+    for i in range(len(signal_values)):
+        day = time_index_values[i] // 10000  # 提取日期部分
+        
+        # 检测新的交易日
+        if day != current_day:
+            current_day = day
+            
+            # 如果新的一天开始且前一天触发了平仓信号
+            if first_bar_of_day[i] and close_next_day:
+                # 第二天开盘时检查是否需要平仓或继续持仓
+                if np.isnan(signal_values[i]) or signal_values[i] <= openthres:
+                    # 如果新的一天第一个信号不足以开仓，则执行平仓
+                    current_position = 0
+                # 否则，如果信号足够强，保持持仓
+                close_next_day = False  # 重置平仓标志
+        
+        # 处理无效信号
+        if np.isnan(signal_values[i]):
+            if has_valid_signal:
+                positions[i] = current_position
+            continue
+        
+        # 标记遇到有效信号
+        has_valid_signal = True
+        
+        # 应用交易逻辑 - 先检查平仓条件 (但实际平仓在次日)
+        if current_position == 1:  # 多头
+            if signal_values[i] < closethres:
+                # 标记需要在下一个交易日开盘时平仓
+                close_next_day = True
+        
+        # 如果当前无头寸，检查是否需要开多头
+        if current_position == 0:
+            if signal_values[i] > openthres:
+                current_position = 1  # 只开多头
+                close_next_day = False  # 取消可能的平仓标记
+        
+        positions[i] = current_position
+    
+    return positions
+
+@jit(nopython=True, parallel=True)
+def _compute_all_positions_3_4_t1(signal_values, time_index_values, threshold_combinations):
+    """
+    Numba-accelerated function to compute positions for all threshold combinations with T+1 rule.
+    """
+    n_thresholds = len(threshold_combinations)
+    n_signals = len(signal_values)
+    
+    # Initialize output array
+    all_positions = np.full((n_thresholds, n_signals), np.nan)
+    
+    # Compute positions for each threshold combination in parallel
+    for i in prange(n_thresholds):  # Using prange for parallel execution
+        openthres = threshold_combinations[i, 0]
+        closethres = threshold_combinations[i, 1]
+        all_positions[i] = _compute_positions_with_time_gaps_3_4_t1(
+            signal_values, time_index_values, openthres, closethres
+        )
+    
+    return all_positions
+
+def trade_rule_by_trigger_v3_4_t1(signal, threshold_combinations):
+    """
+    适用于T+1交易规则的版本：
+    - 当天有信号就开多头
+    - 如果当天触发平仓信号，则第二天开盘时(9:31)平仓
+    - 如果触发平仓但第二天第一个信号又符合开仓条件，则继续持仓
+    - 支持多组开平仓参数，并计算平均仓位
+    
+    Parameters:
+    signal (pd.Series): 带有datetime索引的输入信号
+    threshold_combinations (list of tuples): 每个元组包含(open_threshold, close_threshold)
+    
+    Returns:
+    pd.Series: 所有阈值组合的平均头寸
+    """
+    # Check input type
+    if not isinstance(signal, pd.Series):
+        raise TypeError("signal must be a pandas Series with datetime index")
+    
+    # Convert threshold_combinations to numpy array for Numba
+    threshold_combinations_array = np.array(threshold_combinations, dtype=np.float64)
+    
+    # 创建数值化的时间索引 (格式: YYYYMMDDHHMM)
+    time_index_values = np.array([
+        int(ts.strftime('%Y%m%d%H%M')) for ts in signal.index
+    ], dtype=np.int64)
+    
+    # Get signal values as numpy array
+    signal_values = signal.values
+    
+    # Compute positions using Numba-accelerated function
+    all_positions = _compute_all_positions_3_4_t1(
+        signal_values, time_index_values, threshold_combinations_array
+    )
+    
+    # Compute average positions
+    avg_positions = np.nanmean(all_positions, axis=0)
+    
+    # Convert back to pandas Series
+    return pd.Series(avg_positions, index=signal.index)
+
+# 使用示例:
+# import pandas as pd
+# import numpy as np
+# from numba import jit, prange
+# 
+# # 创建测试数据
+# dates = pd.date_range('2023-01-01 09:31:00', '2023-01-05 15:00:00', freq='1min')
+# # 过滤掉非交易时间
+# mask = ((dates.hour >= 9) & (dates.minute >= 31) | (dates.hour >= 10)) & (dates.hour < 15)
+# dates = dates[mask]
+# 
+# # 创建随机信号数据
+# np.random.seed(42)
+# signal_data = np.random.randn(len(dates))
+# signal = pd.Series(signal_data, index=dates)
+# 
+# # 定义多组开平仓阈值
+# threshold_combinations = [(0.5, 0.2), (0.6, 0.3), (0.7, 0.4)]
+# 
+# # 运行T+1交易策略
+# positions = trade_rule_by_trigger_v3_4_t1(signal, threshold_combinations)
+# 
+# # 查看结果
+# print(positions.head(20))
+
+
+# %%
 def trade_rule_by_trigger_v4(signal, price, openthres=0.8, closethres=0, stoploss_pct=0.05, takeprofit_drawdown_pct=0.03):
     positions = np.full_like(signal, np.nan)  # Initialize positions as NaN
     current_position = 0

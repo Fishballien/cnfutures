@@ -41,17 +41,60 @@ from test_and_eval.factor_evaluation import eval_one_factor_one_period
 
 
 # %%
+# =============================================================================
+# def process_group(args):
+#     """
+#     处理单个组的函数，适用于并行执行
+#     
+#     Args:
+#         args: 包含所需参数的元组 (group_num, group_info, test_dir, normalization_func)
+#         
+#     Returns:
+#         tuple: (group_num, group_scaled) - 组号和组的标准化后的平均因子
+#     """
+#     group_num, group_info, test_dir, normalization_func, price_path, fstart = args
+#     
+#     price_data = pd.read_parquet(price_path)
+#     price_index = price_data.loc[fstart:].index
+#     group_factor_dict, group_weight_dict = {}, {}
+#     
+#     # 处理组内每个因子
+#     for idx in group_info.index:
+#         root_dir = 
+#         tag_name = group_info.loc[idx, 'tag_name']
+#         test_name = group_info.loc[idx, 'test_name']
+#         process_name = group_info.loc[idx, 'process_name']
+#         factor = group_info.loc[idx, 'factor']
+#         direction = group_info.loc[idx, 'direction']
+#         
+#         # 加载缩放因子
+#         scaled_fac_path = test_dir / test_name / tag_name / process_name / 'data' / f'scaled_{factor}.parquet'
+#         scaled_fac = pd.read_parquet(scaled_fac_path)
+#         
+#         # 存储因子及其权重
+#         group_factor_dict[idx] = (direction * scaled_fac).reindex(index=price_index).replace([-np.inf, np.inf], np.nan).fillna(0)
+#         # if scaled_fac.count() / len(scaled_fac) < 0.5:
+#         #     print(test_name, process_name, factor)
+#         group_weight_dict[idx] = 1
+#     
+#     # 计算组平均值并标准化
+#     group_avg = compute_dataframe_dict_average(group_factor_dict, group_weight_dict)
+#     group_scaled = normalization_func(group_avg).replace([-np.inf, np.inf], np.nan).fillna(0)
+#     return group_num, group_scaled
+# =============================================================================
+
+
 def process_group(args):
     """
     处理单个组的函数，适用于并行执行
     
     Args:
-        args: 包含所需参数的元组 (group_num, group_info, test_dir, normalization_func)
+        args: 包含所需参数的元组 (group_num, group_info, test_dir, group_normalization_func, factor_normalization_func)
         
     Returns:
         tuple: (group_num, group_scaled) - 组号和组的标准化后的平均因子
     """
-    group_num, group_info, test_dir, normalization_func, price_path, fstart = args
+    group_num, group_info, test_dir, group_normalization_func, factor_normalization_func, price_path, fstart = args
     
     price_data = pd.read_parquet(price_path)
     price_index = price_data.loc[fstart:].index
@@ -59,29 +102,28 @@ def process_group(args):
     
     # 处理组内每个因子
     for idx in group_info.index:
-        tag_name = group_info.loc[idx, 'tag_name']
-        test_name = group_info.loc[idx, 'test_name']
+        root_dir = group_info.loc[idx, 'root_dir']
         process_name = group_info.loc[idx, 'process_name']
         factor = group_info.loc[idx, 'factor']
         direction = group_info.loc[idx, 'direction']
         
         # 加载缩放因子
-        scaled_fac_path = test_dir / test_name / tag_name / process_name / 'data' / f'scaled_{factor}.parquet'
-        scaled_fac = pd.read_parquet(scaled_fac_path)
+        fac_path = Path(root_dir) / process_name / f'{factor}.parquet'
+        fac = pd.read_parquet(fac_path)
+        
+        # 使用单因子标准化函数
+        scaled_fac = factor_normalization_func(fac)
         
         # 存储因子及其权重
         group_factor_dict[idx] = (direction * scaled_fac).reindex(index=price_index).replace([-np.inf, np.inf], np.nan).fillna(0)
-        # if scaled_fac.count() / len(scaled_fac) < 0.5:
-        #     print(test_name, process_name, factor)
         group_weight_dict[idx] = 1
     
-    # 计算组平均值并标准化
+    # 计算组平均值并使用组标准化函数标准化
     group_avg = compute_dataframe_dict_average(group_factor_dict, group_weight_dict)
-    group_scaled = normalization_func(group_avg).replace([-np.inf, np.inf], np.nan).fillna(0)
+    group_scaled = group_normalization_func(group_avg).replace([-np.inf, np.inf], np.nan).fillna(0)
     return group_num, group_scaled
 
 
-# %%
 class FactorMerger:
     
     def __init__(self, merge_name, select_name, max_workers=None):
@@ -135,8 +177,13 @@ class FactorMerger:
         return config
     
     def _init_utils(self):
-        preprocess_params = self.config['preprocess_params']
-        self.normalization_func = partial(ts_normalize, param=preprocess_params)
+        # 从配置中读取两个不同的预处理参数
+        group_preprocess_params = self.config['group_preprocess_params']
+        factor_preprocess_params = self.config['factor_preprocess_params']
+        
+        # 初始化两个不同的标准化函数
+        self.group_normalization_func = partial(ts_normalize, param=group_preprocess_params)
+        self.factor_normalization_func = partial(ts_normalize, param=factor_preprocess_params)
         
     def run_one_period(self, date_start, date_end):
         # 生成期间名称
@@ -187,7 +234,8 @@ class FactorMerger:
         
         # 计算跨组的总体平均值
         factor_avg = compute_dataframe_dict_average(factor_dict, weight_dict)
-        factor_scaled = self.normalization_func(factor_avg).replace([-np.inf, np.inf], np.nan).fillna(0)
+        # 使用组标准化函数来标准化最终结果
+        factor_scaled = self.group_normalization_func(factor_avg).replace([-np.inf, np.inf], np.nan).fillna(0)
         
         # 保存结果
         factor_scaled.to_parquet(output_path)
@@ -210,8 +258,10 @@ class FactorMerger:
         fstart = self.config['fstart']
         factor_dict, weight_dict = {}, {}
         
-        # 准备并行处理的参数
-        group_args = [(group_num, group_info, self.test_dir, self.normalization_func, price_path, fstart) for group_num, group_info in grouped]
+        # 准备并行处理的参数，现在传入两个标准化函数
+        group_args = [(group_num, group_info, self.test_dir, self.group_normalization_func, 
+                       self.factor_normalization_func, price_path, fstart) 
+                      for group_num, group_info in grouped]
         total_groups = len(group_args)
         
         if max_workers == 1 or max_workers is None:

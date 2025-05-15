@@ -193,7 +193,8 @@ class FactorTest:
     def _scale_factor(self, factor, rtn_1p):
         scale_window = self.params.get('scale_window')
         if scale_window is None:
-            factor = (factor - 0.5) * 2
+            if factor.min().min() >= 0:
+                factor = (factor - 0.5) * 2
             return factor
         scale_quantile = self.params['scale_quantile']
         sp = self.params['sp']
