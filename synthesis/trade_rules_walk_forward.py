@@ -659,6 +659,7 @@ class TradeRulesWalkForward:
         
         return valid_pairs
     
+    # Modified section for the TradeRulesWalkForward class to include prediction consistency checking and merging
     def run_walk_forward(self):
         """
         Run the entire walk-forward optimization process.
@@ -694,26 +695,87 @@ class TradeRulesWalkForward:
             # Filter and select optimal combinations
             self.filter_conditions(eval_res, *fp, to_plot=['net_sharpe_ratio'])
         
-        # Collect all position data across periods
+        # Collect all position data across periods and save with consistency checking
+        self._collect_and_save_positions()
+        
+        # Run final tests on combined positions
+        self.run_final_tests()
+    
+    def _collect_and_save_positions(self):
+        """
+        Collect position data across all periods, check consistency with existing data,
+        and merge with historical data if available.
+        
+        This follows the pattern of ModelFit's prediction saving logic.
+        """
         pos_all = pd.DataFrame()
-        for fp, pp in tqdm(list(zip(self.rolling.fit_periods, self.rolling.predict_periods)), desc='Concat prediction'):
+        
+        # Collect positions from each period
+        for fp, pp in tqdm(list(zip(self.rolling.fit_periods, self.rolling.predict_periods)), desc='Collecting positions'):
             period = period_shortcut(*fp)
             new_test_name = f"{self.config['multi_test_name']}_{self.config['version_name']}_{period}"
             test_data_dir = self.final_test_dir / 'test' / new_test_name / 'data'
             pos_filename = f"pos_predict_{self.config['model_name']}"
             pos_path = test_data_dir / f'{pos_filename}.parquet'
-            pos = pd.read_parquet(pos_path)
-            pos_to_predict = pos.loc[pp[0]:pp[1]]
             
-            pos_all = add_dataframe_to_dataframe_reindex(pos_all, pos_to_predict)
+            try:
+                pos = pd.read_parquet(pos_path)
+                pos_to_predict = pos.loc[pp[0]:pp[1]]
+                pos_all = add_dataframe_to_dataframe_reindex(pos_all, pos_to_predict)
+            except Exception as e:
+                self.logger.error(f"Error reading position data for period {period}: {str(e)}")
         
-        # Save combined positions
+        # Get the path to the final position file
+        final_pos_path = self.pos_dir / f"pos_{self.config['version_name']}.parquet"
+        
+        # Check if there's an existing combined position file to merge with
+        if final_pos_path.exists():
+            self.logger.info("Found existing position data, checking consistency before merging...")
+            existing_pos = pd.read_parquet(final_pos_path)
+            
+            # Clean up data by removing any zero or NaN rows
+            existing_pos = existing_pos[(~existing_pos.isna().all(axis=1))]
+            
+            # Check consistency if required
+            if self.check_consistency:
+                try:
+                    # Use the check_dataframe_consistency function from utils.datautils
+                    from utils.datautils import check_dataframe_consistency
+                    status, info = check_dataframe_consistency(existing_pos, pos_all)
+                    
+                    if status == "INCONSISTENT":
+                        # Save the inconsistent data for debugging
+                        debug_dir = self.rolling_model_dir / 'debug'
+                        debug_dir.mkdir(parents=True, exist_ok=True)
+                        debug_path = debug_dir / f'pos_{self.config["version_name"]}_inconsistent.parquet'
+                        pos_all.to_parquet(debug_path)
+                        
+                        # Construct error message
+                        error_msg = f"Position data consistency check failed! Index: {info['index']}, Column: {info['column']}, "
+                        error_msg += f"Original value: {info['original_value']}, New value: {info['new_value']}, "
+                        error_msg += f"Inconsistent count: {info['inconsistent_count']}. Saved to {debug_path}"
+                        
+                        self.logger.error(error_msg)
+                        raise ValueError(error_msg)
+                except Exception as e:
+                    if not isinstance(e, ValueError):  # If not the ValueError we raised above
+                        self.logger.error(f"Exception during consistency check: {str(e)}")
+                        # Continue with the merge, but log the error
+            
+            # Merge with existing data
+            pos_all = add_dataframe_to_dataframe_reindex(existing_pos, pos_all)
+            self.logger.info(f"Successfully merged new positions with existing data: {len(pos_all)} rows total")
+        else:
+            self.logger.info("No existing position data found, saving new positions")
+        
+        # Clean up final data by removing any zero or NaN rows
+        pos_all = pos_all[(~pos_all.isna().all(axis=1))]
+        
+        # Save the combined positions to both CSV and Parquet formats
         pos_all.to_csv(self.pos_dir / f"pos_{self.config['version_name']}.csv")
-        pos_all.to_parquet(self.pos_dir / f"pos_{self.config['version_name']}.parquet")
-        
-        # Run final tests on combined positions
-        self.run_final_tests()
-        
+        pos_all.to_parquet(final_pos_path)
+        self.logger.success(f"Saved {len(pos_all)} position rows to {final_pos_path}")
+            
     def run_final_tests(self):
         """
         Run final tests on the combined positions across all periods.
@@ -735,7 +797,7 @@ class TradeRulesWalkForward:
                 test_name=test_name, 
                 result_dir=self.rolling_model_dir
             )
-            ft.test_one_factor(f"pos_{self.config['version_name']}")
+            ft.test_one_factor(f"pos_{self.config['version_name']}", date_start=date_start)
             
         self.logger.success(f"Final tests completed for version {self.config['version_name']}")
 
