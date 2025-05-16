@@ -42,8 +42,7 @@ from utils.datautils import add_dataframe_to_dataframe_reindex
 from utils.logutils import FishStyleLogger
 
 
-# Define multiprocessing functions outside of the class
-def test_single_threshold(factor_data_dir, process_name, tag_name, test_name, test_param, result_dir, openthres, closethres):
+def test_single_threshold(factor_data_dir, process_name, test_name, test_param, result_dir, openthres, closethres, model_name):
     """
     Test a single combination of open and close thresholds.
     
@@ -65,6 +64,8 @@ def test_single_threshold(factor_data_dir, process_name, tag_name, test_name, te
         Open threshold value
     closethres : float
         Close threshold value
+    model_name : str
+        Model name for the factor to test
         
     Returns:
     --------
@@ -76,14 +77,16 @@ def test_single_threshold(factor_data_dir, process_name, tag_name, test_name, te
     new_test_name = f"{test_name}_op{openthres}_cl{closethres}"
     
     tester = FactorTesterByDiscrete(
-        process_name, 
-        tag_name, 
-        factor_data_dir, 
+        None, 
+        None,
+        factor_data_dir=factor_data_dir, 
         test_name=new_test_name, 
         result_dir=result_dir, 
         params=test_pr
     )
-    tester.test_multi_factors()
+    
+    # Changed from test_multi_factors() to test_one_factor() with the predict_{model_name} pattern
+    tester.test_one_factor(f"predict_{model_name}")
     
     return new_test_name
 
@@ -126,7 +129,7 @@ def eval_single_threshold(factor_data_dir, model_name, test_name, tag_name, proc
     
     pred_name = f"predict_{model_name}"
     new_test_name = f"{test_name}_op{openthres}_cl{closethres}"
-    test_data_dir = factor_data_dir / 'test' / new_test_name / tag_name / process_name / 'data'
+    test_data_dir = factor_data_dir / 'test' / new_test_name / 'data'
     
     res_dict = eval_one_factor_one_period_net_public(
         pred_name, res_info, test_data_dir, date_start, date_end, fee)
@@ -141,7 +144,7 @@ class TradeRulesWalkForward:
     """
 
     def __init__(self, config_file=None, test_name=None, pstart=None, puntil=None, n_workers=1,
-                fstart=None, check_consistency=True, base_model_name=None):
+                fstart=None, check_consistency=True, base_model_name=None, skip_test_eval=False):
         """
         Initialize the TradeRulesWalkForward object.
         
@@ -163,6 +166,8 @@ class TradeRulesWalkForward:
             Whether to check consistency of results with previous runs.
         base_model_name : str, optional
             Base model name for directory structure.
+        skip_test_eval : bool, optional
+            Whether to skip the testing and evaluation phases and use existing results. Default is False.
         """
         self.config_file = config_file
         self.test_name_override = test_name
@@ -172,6 +177,7 @@ class TradeRulesWalkForward:
         self.n_workers = n_workers
         self.check_consistency = check_consistency
         self.base_model_name = base_model_name
+        self.skip_test_eval = skip_test_eval
         
         self.logger = FishStyleLogger()
         
@@ -213,6 +219,9 @@ class TradeRulesWalkForward:
             self.config['puntil'] = self.puntil_override
         if self.fstart_override:
             self.config['fstart'] = self.fstart_override
+        if self.base_model_name:
+            self.config['model_name'] = self.base_model_name
+        self.config['version_name'] = f"{self.config['model_name']}_{self.config_file}"
             
         # Ensure required configurations are present
         required_keys = [
@@ -238,16 +247,18 @@ class TradeRulesWalkForward:
     def _init_dirs(self):
         """Initialize directories for outputs."""
         # Extract parameters from config
-        model_name = self.config['model_name']
+        model_name = self.base_model_name
         version_name = self.config['version_name']
         
         # Setup directories
-        self.factor_data_dir = self.model_dir / model_name
-        self.rolling_model_dir = self.result_dir / 'rolling_model' / version_name
+        self.factor_data_dir = self.model_dir / model_name / 'predict'
+        self.test_result_dir = self.model_dir / model_name / 'test_multi'
+        self.final_test_dir = self.model_dir / model_name / 'final_test'
+        self.rolling_model_dir = self.model_dir / model_name  / 'rolling_model' / self.config_file
         self.pos_dir = self.rolling_model_dir / 'pos'
         self.pos_dir.mkdir(parents=True, exist_ok=True)
         
-        self.summary_dir = self.factor_data_dir / 'trade_rule_summary'
+        self.summary_dir = self.model_dir / model_name / 'trade_rule_summary'
         self.summary_dir.mkdir(parents=True, exist_ok=True)
         
     def _init_parameters(self):
@@ -294,12 +305,12 @@ class TradeRulesWalkForward:
                         test_single_threshold,
                         self.factor_data_dir,
                         self.config['process_name'],
-                        self.config['tag_name'],
                         self.config['test_name'],
                         self.test_param,
-                        self.result_dir,
+                        self.test_result_dir,
                         openthres,
-                        closethres
+                        closethres,
+                        self.config['model_name']  # Pass model_name parameter
                     ) for openthres, closethres in test_tasks
                 ]
                 
@@ -312,12 +323,12 @@ class TradeRulesWalkForward:
                 test_single_threshold(
                     self.factor_data_dir,
                     self.config['process_name'],
-                    self.config['tag_name'],
                     self.config['test_name'],
                     self.test_param,
-                    self.result_dir,
+                    self.test_result_dir,
                     openthres,
-                    closethres
+                    closethres,
+                    self.config['model_name']  # Pass model_name parameter
                 )
     
     def eval_all_thresholds_for_period(self, date_start, date_end):
@@ -349,7 +360,7 @@ class TradeRulesWalkForward:
                 futures = [
                     executor.submit(
                         eval_single_threshold,
-                        self.factor_data_dir,
+                        self.test_result_dir,
                         self.config['model_name'],
                         self.config['test_name'],
                         self.config['tag_name'],
@@ -371,7 +382,7 @@ class TradeRulesWalkForward:
             for openthres, closethres in tqdm(eval_tasks, desc='Evaluating thresholds'):
                 results.append(
                     eval_single_threshold(
-                        self.factor_data_dir,
+                        self.test_result_dir,
                         self.config['model_name'],
                         self.config['test_name'],
                         self.config['tag_name'],
@@ -386,6 +397,11 @@ class TradeRulesWalkForward:
         
         # Combine results
         res_df = pd.DataFrame(results)
+        
+        # Save results to file for potential reuse
+        period = period_shortcut(date_start, date_end)
+        res_df.to_parquet(self.summary_dir / f'{self.config["version_name"]}_{period}_eval_results.parquet')
+        
         return res_df
     
     def generate_condition(self, data, params):
@@ -493,6 +509,8 @@ class TradeRulesWalkForward:
     def filter_conditions(self, res_df, date_start, date_end, to_plot=None):
         """
         Filter threshold combinations based on evaluation metrics and plot results.
+        If no combinations pass the conditions, select top N based on specified metric.
+        If less than top_n combinations pass the conditions, supplement with additional top combinations.
         
         Parameters:
         -----------
@@ -524,10 +542,62 @@ class TradeRulesWalkForward:
         
         # Extract valid combinations
         valid_pairs = condition[condition].index.tolist()
+        
+        # Get configuration parameters
+        top_n = self.config.get('top_n', 5)  # Default to top 5 if not specified
+        sort_metric = self.config.get('sort_metric', 'net_sharpe_ratio')  # Default to net_sharpe_ratio
+        
+        # If valid pairs found but less than top_n, supplement with additional top combinations
+        if valid_pairs and len(valid_pairs) < top_n:
+            self.logger.info(f"Found {len(valid_pairs)} valid combinations, but need {top_n}. Supplementing with additional top combinations.")
+            
+            # Sort by the specified metric
+            sorted_data = heatmap_data.sort_values(by=sort_metric, ascending=False)
+            
+            # Get all pairs in sorted order
+            all_sorted_pairs = sorted_data.index.tolist()
+            
+            # Filter out pairs that are already in valid_pairs
+            remaining_pairs = [pair for pair in all_sorted_pairs if pair not in valid_pairs]
+            
+            # Add additional pairs to reach top_n
+            additional_pairs_needed = top_n - len(valid_pairs)
+            additional_pairs = remaining_pairs[:additional_pairs_needed]
+            
+            # Update valid_pairs
+            valid_pairs.extend(additional_pairs)
+            
+            # Append to conditions text
+            conditions_text += f"\nFound only {len(valid_pairs) - len(additional_pairs)} combinations meeting all criteria.\nSupplemented with {len(additional_pairs)} additional top combinations by {sort_metric}."
+            
+        # If no valid pairs found, select top N based on specified metric
+        elif not valid_pairs:
+            self.logger.warning(f"No threshold combinations meet all criteria for {period}.")
+            self.logger.info(f"Selecting top {top_n} combinations based on {sort_metric}.")
+            
+            # Sort by the specified metric and select top N
+            sorted_data = heatmap_data.sort_values(by=sort_metric, ascending=False)
+            valid_pairs = sorted_data.head(top_n).index.tolist()
+            
+            # Append to conditions text
+            conditions_text += f"\nNo combinations met all criteria.\nSelected top {top_n} by {sort_metric}."
+        
         self.logger.info(f"Version {self.config['version_name']} {period} valid pairs: {valid_pairs}")
         
         # Create mask for visualization
-        mask = ~condition.unstack()  # Convert to unstack and invert
+        if condition.any():  # If any combinations passed the original filter
+            # Start with all masked
+            mask = pd.Series(True, index=heatmap_data.index)
+            # Unmask valid pairs (including supplemented ones if applicable)
+            for pair in valid_pairs:
+                mask.loc[pair] = False
+            mask = mask.unstack()
+        else:
+            # Create mask that only shows top N selected combinations
+            mask = pd.Series(True, index=heatmap_data.index)  # Start with all masked
+            for pair in valid_pairs:
+                mask.loc[pair] = False  # Unmask only the top N combinations
+            mask = mask.unstack()
         
         # Plot heatmaps for selected metrics
         to_plot = to_plot or heatmap_data.columns
@@ -541,7 +611,16 @@ class TradeRulesWalkForward:
             sns.heatmap(heatmap_matrix, annot=True, cmap='coolwarm', fmt='.2f', mask=mask, ax=ax)
         
             # Adjust labels and title
-            plt.title(f'Masked Heatmap for {column} {period} (filtered by conditions) - {self.config["version_name"]}')
+            title_text = ""
+            if condition.any() and len(valid_pairs) <= top_n:
+                if len(valid_pairs) < top_n:
+                    title_text = f" ({len(valid_pairs) - (top_n - len(valid_pairs))} filtered + {top_n - len(valid_pairs)} supplemented)"
+                else:
+                    title_text = " (filtered by conditions)"
+            else:
+                title_text = f" (top {top_n} by {sort_metric})"
+                
+            plt.title(f'Masked Heatmap for {column} {period}{title_text} - {self.config["version_name"]}')
             plt.xlabel('closethres')
             plt.ylabel('openthres')
         
@@ -570,11 +649,12 @@ class TradeRulesWalkForward:
         
         # Test factor with multi-threshold
         tester = FactorTesterByDiscrete(
-            None, None, self.factor_data_dir / 'predict', 
+            None, None, self.factor_data_dir, 
             test_name=new_test_name, 
-            result_dir=self.factor_data_dir, 
+            result_dir=self.final_test_dir, 
             params=test_pr
         )
+        # Changed from test_multi_factors() to test_one_factor() with the predict_{model_name} pattern
         tester.test_one_factor(f"predict_{self.config['model_name']}")
         
         return valid_pairs
@@ -584,12 +664,34 @@ class TradeRulesWalkForward:
         Run the entire walk-forward optimization process.
         Tests thresholds, evaluates performance, and selects optimal parameters for each period.
         """
-        # First test all threshold combinations
-        self.test_thresholds()
+        # Test all threshold combinations if not skipping
+        if not self.skip_test_eval:
+            self.logger.info("Testing all threshold combinations...")
+            self.test_thresholds()
+        else:
+            self.logger.info("Skipping testing phase as requested...")
         
         # For each rolling period, filter and select optimal combinations
         for fp in tqdm(self.rolling.fit_periods, 'Rolling filter'):
-            eval_res = self.eval_all_thresholds_for_period(*fp)
+            if not self.skip_test_eval:
+                self.logger.info(f"Evaluating thresholds for period {fp[0]} to {fp[1]}...")
+                eval_res = self.eval_all_thresholds_for_period(*fp)
+            else:
+                self.logger.info(f"Loading existing evaluation results for period {fp[0]} to {fp[1]}...")
+                # Assuming evaluation results are stored in a standard location
+                period = period_shortcut(*fp)
+                eval_path = self.summary_dir / f'{self.config["version_name"]}_{period}_eval_results.parquet'
+                
+                # Check if the evaluation file exists
+                if not eval_path.exists():
+                    self.logger.warning(f"Evaluation results not found at {eval_path}. Running evaluation.")
+                    eval_res = self.eval_all_thresholds_for_period(*fp)
+                    # Save the results for future use
+                    eval_res.to_parquet(eval_path)
+                else:
+                    eval_res = pd.read_parquet(eval_path)
+                    
+            # Filter and select optimal combinations
             self.filter_conditions(eval_res, *fp, to_plot=['net_sharpe_ratio'])
         
         # Collect all position data across periods
@@ -597,7 +699,7 @@ class TradeRulesWalkForward:
         for fp, pp in tqdm(list(zip(self.rolling.fit_periods, self.rolling.predict_periods)), desc='Concat prediction'):
             period = period_shortcut(*fp)
             new_test_name = f"{self.config['multi_test_name']}_{self.config['version_name']}_{period}"
-            test_data_dir = self.factor_data_dir / 'test' / new_test_name / 'data'
+            test_data_dir = self.final_test_dir / 'test' / new_test_name / 'data'
             pos_filename = f"pos_predict_{self.config['model_name']}"
             pos_path = test_data_dir / f'{pos_filename}.parquet'
             pos = pd.read_parquet(pos_path)
@@ -657,6 +759,8 @@ def main():
                        help='Number of workers for parallel processing')
     parser.add_argument('-m', '--model', type=str, 
                        help='Base model name')
+    parser.add_argument('-s', '--skip_test_eval', action='store_true',
+                       help='Skip testing and evaluation phases and use existing results')
     
     args = parser.parse_args()
     
@@ -668,7 +772,8 @@ def main():
         puntil=args.puntil,
         fstart=args.fstart,
         n_workers=args.workers,
-        base_model_name=args.model
+        base_model_name=args.model,
+        skip_test_eval=args.skip_test_eval
     )
     
     walk_forward.run_walk_forward()

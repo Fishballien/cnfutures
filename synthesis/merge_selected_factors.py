@@ -266,7 +266,7 @@ class FactorMerger:
         
         if max_workers == 1 or max_workers is None:
             # 单进程顺序处理
-            with tqdm(total=total_groups, desc=f'处理 {period_name} 的Groups') as pbar:
+            with tqdm(total=total_groups, desc=f'处理 {period_name} 的Groups [Single]') as pbar:
                 for args in group_args:
                     group_num = args[0]
                     try:
@@ -282,7 +282,7 @@ class FactorMerger:
             with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
                 future_to_group = {executor.submit(process_group, args): args[0] for args in group_args}
         
-                with tqdm(total=total_groups, desc=f'处理 {period_name} 的Groups') as pbar:
+                with tqdm(total=total_groups, desc=f'处理 {period_name} 的Groups [Multi]') as pbar:
                     for future in concurrent.futures.as_completed(future_to_group):
                         group_num = future_to_group[future]
                         try:

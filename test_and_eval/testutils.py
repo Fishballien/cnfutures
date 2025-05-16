@@ -193,7 +193,15 @@ def calculate_stationarity(factor_series):
         Dictionary containing stationarity test results
     """
     # Perform stationarity test (ADF test) on the original series
-    adf_result = adfuller(factor_series.dropna().iloc[::100].values)
+    try:
+        adf_result = adfuller(factor_series.dropna().iloc[::100].values)
+    except:
+        return {
+            'adf_statistic': None,
+            'p_value': None,
+            'critical_values': None,
+            'is_stationary': None
+        }
     adf_stat, p_value, _, _, critical_values, _ = adf_result
     
     is_stationary = p_value < 0.05
@@ -587,20 +595,23 @@ def get_factor_basic_info(factor_name, factor_data, price_data, pp_by_sp_list, d
                 
                 # Only proceed if we have future returns data for this column
                 if column_fut_rtn_list:
-                    # Analyze factor using only the corresponding fut_rtn column
-                    factor_results = analyze_factor(factor_series, column_fut_rtn_list)
-                    results[f"{factor_name}_{column}"] = factor_results
-                    
-                    # Save results with both factor name and column name
-                    result_filename = f"{factor_name}_{column}_analysis.json"
-                    with open(data_dir / result_filename, 'w') as f:
-                        json.dump(factor_results, f, indent=4, default=str)
-                    
-                    # Plot factor analysis with both factor name and column name
-                    plot_filename = f"{factor_name}_{column}_analysis.png"
-                    plot_factor_analysis(f"{factor_name} - {column}", factor_series, 
-                                       column_fut_rtn_list, factor_results, 
-                                       plot_dir / plot_filename)
+                    try:
+                        # Analyze factor using only the corresponding fut_rtn column
+                        factor_results = analyze_factor(factor_series, column_fut_rtn_list)
+                        results[f"{factor_name}_{column}"] = factor_results
+                        
+                        # Save results with both factor name and column name
+                        result_filename = f"{factor_name}_{column}_analysis.json"
+                        with open(data_dir / result_filename, 'w') as f:
+                            json.dump(factor_results, f, indent=4, default=str)
+                        
+                        # Plot factor analysis with both factor name and column name
+                        plot_filename = f"{factor_name}_{column}_analysis.png"
+                        plot_factor_analysis(f"{factor_name} - {column}", factor_series, 
+                                           column_fut_rtn_list, factor_results, 
+                                           plot_dir / plot_filename)
+                    except:
+                        pass
     
     return results
 # Example usage:
