@@ -82,9 +82,9 @@ class TradeSelector:
         
         # 设置基本参数
         # 如果传入了merge_type和merge_name，优先使用传入的值，否则使用配置文件中的值
-        self.eval_name = merge_name if merge_name is not None else self.config['basic']['merge_name']
-        self.eval_type = merge_type if merge_type is not None else self.config['basic']['merge_type']
-        self.eval_dir = self.result_dir / self.eval_type / self.eval_name  # 评估结果目录
+        self.merge_name = merge_name if merge_name is not None else self.config['basic']['merge_name']
+        self.merge_type = merge_type if merge_type is not None else self.config['basic']['merge_type']
+        self.eval_dir = self.result_dir / self.merge_type / self.merge_name  # 评估结果目录
         
         # 设置筛选函数
         filter_param = self.config['filter_param']
@@ -249,14 +249,14 @@ class TradeSelector:
             y_pred (pd.DataFrame): 新的预测结果DataFrame
         """
         # 汇总预测文件路径
-        pred_all_path = self.pos_dir / f'pos_{self.select_name}.parquet'
+        pred_all_path = self.pos_dir / f'pos_{self.merge_name}_{self.select_name}.parquet'
         
         # 检查是否有已存在的汇总文件
         if os.path.exists(pred_all_path):
             # 读取已存在的数据
             pred_all = pd.read_parquet(pred_all_path)
             # 过滤掉全为0或全为NaN的行，优化数据质量
-            pred_all = pred_all[(~(pred_all == 0).all(axis=1)) & (~pred_all.isna().all(axis=1))]
+            pred_all = pred_all[(~pred_all.isna().all(axis=1))]
             
             # 检查是否需要进行一致性检查
             if self.check_consistency and hasattr(self, 'debug_dir'):
@@ -282,12 +282,12 @@ class TradeSelector:
             # 进行拼接操作，合并新旧数据
             pred_all = add_dataframe_to_dataframe_reindex(pred_all, y_pred)
             # 再次过滤无效行
-            pred_all = pred_all[(~(pred_all == 0).all(axis=1)) & (~pred_all.isna().all(axis=1))]
+            pred_all = pred_all[(~pred_all.isna().all(axis=1))]
         else:
             # 如果文件不存在，则直接使用y_pred创建新的DataFrame
             pred_all = y_pred.copy()
             # 过滤无效行
-            pred_all = pred_all[(~(pred_all == 0).all(axis=1)) & (~pred_all.isna().all(axis=1))]
+            pred_all = pred_all[(~pred_all.isna().all(axis=1))]
         
         # 保存更新后的汇总数据
         pred_all.to_parquet(pred_all_path)
@@ -352,7 +352,7 @@ class TradeSelector:
                     process_name, 
                     factor_data_dir, 
                     result_dir, 
-                    self.select_name
+                    f'{self.merge_name}_{self.select_name}',
                 ): test_info for test_info in test_list
             }
             

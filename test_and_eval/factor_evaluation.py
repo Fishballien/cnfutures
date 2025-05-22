@@ -345,7 +345,7 @@ class FactorEvaluation:
             raise NotImplementedError(f'Invalid price type: {price_type}')
         twap_data_dir = Path(self.params.get('twap_dir') or default_dir)
         self.price_data_path = twap_data_dir / f'{twap_name}.parquet'
-        
+    
     def eval_one_period(self, date_start, date_end, data_date_start=None, data_date_end=None, process_name_list=None):
         test_name = self.params.get('test_name')
         corr_thresh = self.params.get('corr_thresh', None)
@@ -370,21 +370,26 @@ class FactorEvaluation:
         all_tasks_info = []
         
         for process_info in process_name_list:
+            # Extract process information
             if not isinstance(process_info, str):
                 if len(process_info) == 3:
                     processed_data_dir, tag_name, process_name = process_info
+                    current_test_name = test_name  # Use the default test_name
+                    current_mode = mode  # Use the default mode
                 elif len(process_info) == 5:
-                    processed_data_dir, tag_name, process_name, mode, test_name = process_info
+                    processed_data_dir, tag_name, process_name, current_mode, current_test_name = process_info
                 processed_data_dir = processed_data_dir or self.factor_data_dir
             else:
                 processed_data_dir = self.factor_data_dir
                 tag_name = None
                 process_name = process_info
+                current_test_name = test_name  # Use the default test_name
+                current_mode = mode  # Use the default mode
                 
             # 检查是否已经评估过
-            process_eval_dir = (self.feval_dir / name_to_autosave / test_name / tag_name / process_name 
+            process_eval_dir = (self.feval_dir / name_to_autosave / current_test_name / tag_name / process_name 
                                 if tag_name is not None
-                                else self.feval_dir / name_to_autosave / test_name / process_name)
+                                else self.feval_dir / name_to_autosave / current_test_name / process_name)
             process_eval_dir.mkdir(exist_ok=True, parents=True)
             corr_thresh_suffix = '' if corr_thresh is None else f'_{str(int(corr_thresh * 100)).zfill(3)}'
             process_res_filename = f'factor_eval_{period_name}{corr_thresh_suffix}'
@@ -393,12 +398,16 @@ class FactorEvaluation:
             # 如果文件已存在且需要检查，则读取已有结果
             if check_exists and os.path.exists(process_res_path):
                 res_df = pd.read_csv(process_res_path)
+                if 'Unnamed: 0' in res_df.columns:
+                    res_df = res_df.drop(columns=['Unnamed: 0'])
+                res_df = res_df[(res_df['process_name'] == process_name) & (res_df['test_name'] == current_test_name)]
+                res_df.to_csv(process_res_path, index=None)
                 res_df_list.append(res_df)
                 continue
             
             # 定位test结果
-            process_dir = (test_dir / test_name / tag_name if tag_name is not None
-                          else test_dir / test_name)
+            process_dir = (test_dir / current_test_name / tag_name if tag_name is not None
+                          else test_dir / current_test_name)
             data_dir = process_dir / process_name / 'data' 
             
             # 定位factors
@@ -416,80 +425,233 @@ class FactorEvaluation:
             # 构建评估函数
             eval_func = partial(eval_one_factor_one_period, date_start=date_start, date_end=date_end,
                                 data_date_start=data_date_start, data_date_end=data_date_end,
-                                process_name=process_name, test_name=test_name, tag_name=tag_name, 
+                                process_name=process_name, test_name=current_test_name, tag_name=tag_name, 
                                 data_dir=data_dir, processed_data_dir=processed_data_dir,
                                 valid_prop_thresh=valid_prop_thresh, fee=fee, 
-                                price_data_path=self.price_data_path, mode=mode)
+                                price_data_path=self.price_data_path, mode=current_mode)
             
             # 收集此process的所有任务
             all_tasks_info.append({
                 'process_name': process_name,
+                'test_name': current_test_name,
                 'eval_func': eval_func,
                 'factor_name_list': factor_name_list,
                 'process_res_path': process_res_path
             })
         
         # 如果没有任务需要执行，直接返回结果
-        if not all_tasks_info:
-            return pd.concat(res_df_list, axis=0, ignore_index=True) if res_df_list else pd.DataFrame()
-        
-        # 将所有任务转换为(eval_func, factor_name)对
-        all_tasks = []
-        task_to_process_map = {}  # 用于跟踪每个任务属于哪个process
-        
-        for task_info in all_tasks_info:
-            process_name = task_info['process_name']
-            eval_func = task_info['eval_func']
-            for factor_name in task_info['factor_name_list']:
-                task_id = len(all_tasks)
-                all_tasks.append((eval_func, factor_name))
-                task_to_process_map[task_id] = task_info
-        
-        # 执行所有任务
-        results_by_process = {}  # 按process分组的结果
-        
-        if self.n_workers is None or self.n_workers == 1:
-            # 单进程执行
-            for task_id, (eval_func, factor_name) in enumerate(tqdm(all_tasks, desc=f'{self.eval_name} - {period_name}')):
-                res_dict = eval_func(factor_name)
-                if res_dict is not None:
-                    process_info = task_to_process_map[task_id]
-                    process_name = process_info['process_name']
-                    if process_name not in results_by_process:
-                        results_by_process[process_name] = []
-                    results_by_process[process_name].append(res_dict)
-        else:
-            # 多进程执行
-            with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
-                futures = [executor.submit(eval_func, factor_name) for eval_func, factor_name in all_tasks]
-                for task_id, future in enumerate(tqdm(as_completed(futures), total=len(futures), 
-                                                     desc=f'{self.eval_name} - {period_name}')):
-                    res_dict = future.result()
+        if all_tasks_info:
+
+            # 将所有任务转换为(eval_func, factor_name)对
+            all_tasks = []
+            task_to_process_map = {}  # 用于跟踪每个任务属于哪个process
+            
+            for task_info in all_tasks_info:
+                process_name = task_info['process_name']
+                test_name = task_info['test_name']
+                eval_func = task_info['eval_func']
+                for factor_name in task_info['factor_name_list']:
+                    task_id = len(all_tasks)
+                    all_tasks.append((eval_func, factor_name))
+                    task_to_process_map[task_id] = task_info
+            
+            # 执行所有任务
+            results_by_key = {}  # 使用(test_name, process_name)作为键的结果
+            
+            if self.n_workers is None or self.n_workers == 1:
+                # 单进程执行
+                for task_id, (eval_func, factor_name) in enumerate(tqdm(all_tasks, desc=f'{self.eval_name} - {period_name}')):
+                    res_dict = eval_func(factor_name)
                     if res_dict is not None:
                         process_info = task_to_process_map[task_id]
                         process_name = process_info['process_name']
-                        if process_name not in results_by_process:
-                            results_by_process[process_name] = []
-                        results_by_process[process_name].append(res_dict)
-        
-        # 将结果按process分组保存并添加到结果列表
-        for task_info in all_tasks_info:
-            process_name = task_info['process_name']
-            process_res_path = task_info['process_res_path']
+                        test_name = process_info['test_name']
+                        key = (test_name, process_name)
+                        if key not in results_by_key:
+                            results_by_key[key] = []
+                        results_by_key[key].append(res_dict)
+            else:
+                # 多进程执行
+                with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
+                    futures = [executor.submit(eval_func, factor_name) for eval_func, factor_name in all_tasks]
+                    for task_id, future in enumerate(tqdm(as_completed(futures), total=len(futures), 
+                                                         desc=f'{self.eval_name} - {period_name}')):
+                        res_dict = future.result()
+                        if res_dict is not None:
+                            process_info = task_to_process_map[task_id]
+                            process_name = process_info['process_name']
+                            test_name = process_info['test_name']
+                            key = (test_name, process_name)
+                            if key not in results_by_key:
+                                results_by_key[key] = []
+                            results_by_key[key].append(res_dict)
             
-            if process_name in results_by_process and results_by_process[process_name]:
-                res_df = pd.DataFrame(results_by_process[process_name])
-                res_df_list.append(res_df)
-                res_df.to_csv(process_res_path, index=None)
+            # 将结果按process分组保存并添加到结果列表
+            for task_info in all_tasks_info:
+                process_name = task_info['process_name']
+                test_name = task_info['test_name']
+                process_res_path = task_info['process_res_path']
+                
+                key = (test_name, process_name)
+                if key in results_by_key and results_by_key[key]:
+                    res_df = pd.DataFrame(results_by_key[key])
+                    res_df_list.append(res_df)
+                    res_df.to_csv(process_res_path, index=None)
         
-        # return pd.concat(res_df_list, axis=0, ignore_index=True) if res_df_list else pd.DataFrame()
-    
         res = pd.concat(res_df_list, axis=0, ignore_index=True) if res_df_list else pd.DataFrame()
         self._save_factor_eval(res, period_name)
         self._plot_sharpe_dist(period_name, res)
         # self._plot_adf_and_sharpe(period_name, res)
         # if len(self.process_name_list) == 2:
         #     self._plot_diff(period_name, res)
+        
+        return res
+        
+# =============================================================================
+#     def eval_one_period(self, date_start, date_end, data_date_start=None, data_date_end=None, process_name_list=None):
+#         test_name = self.params.get('test_name')
+#         corr_thresh = self.params.get('corr_thresh', None)
+#         filter_gp = self.params.get('filter_gp', 'return')
+#         check_exists = self.params.get('check_exists', False)
+#         name_to_autosave = self.params.get('name_to_autosave', 'test')
+#         fee = self.params.get('fee', 4e-4)
+#         mode = self.params.get('mode', 'test')
+#         test_dir = self.test_dir
+#         valid_prop_thresh = self.params.get('valid_prop_thresh', 0.2)
+#         if process_name_list is None or len(process_name_list) == 0:
+#             process_name_list = self.process_name_list
+#         
+#         res_df_list = []
+#         period_name = period_shortcut(date_start, date_end)
+#         filter_func = partial(filter_correlated_features, 
+#                               date_start=data_date_start, date_end=data_date_end,
+#                               valid_prop_thresh=valid_prop_thresh, 
+#                               corr_thresh=corr_thresh, filter_gp=filter_gp)
+#         
+#         # 先收集所有要处理的任务
+#         all_tasks_info = []
+#         
+#         for process_info in process_name_list:
+#             if not isinstance(process_info, str):
+#                 if len(process_info) == 3:
+#                     processed_data_dir, tag_name, process_name = process_info
+#                 elif len(process_info) == 5:
+#                     processed_data_dir, tag_name, process_name, mode, test_name = process_info
+#                 processed_data_dir = processed_data_dir or self.factor_data_dir
+#             else:
+#                 processed_data_dir = self.factor_data_dir
+#                 tag_name = None
+#                 process_name = process_info
+#                 
+#             # 检查是否已经评估过
+#             process_eval_dir = (self.feval_dir / name_to_autosave / test_name / tag_name / process_name 
+#                                 if tag_name is not None
+#                                 else self.feval_dir / name_to_autosave / test_name / process_name)
+#             process_eval_dir.mkdir(exist_ok=True, parents=True)
+#             corr_thresh_suffix = '' if corr_thresh is None else f'_{str(int(corr_thresh * 100)).zfill(3)}'
+#             process_res_filename = f'factor_eval_{period_name}{corr_thresh_suffix}'
+#             process_res_path = process_eval_dir / f'{process_res_filename}.csv'
+#             
+#             # 如果文件已存在且需要检查，则读取已有结果
+#             if check_exists and os.path.exists(process_res_path):
+#                 res_df = pd.read_csv(process_res_path)
+#                 res_df_list.append(res_df)
+#                 continue
+#             
+#             # 定位test结果
+#             process_dir = (test_dir / test_name / tag_name if tag_name is not None
+#                           else test_dir / test_name)
+#             data_dir = process_dir / process_name / 'data' 
+#             
+#             # 定位factors
+#             factor_dir = Path(processed_data_dir) / process_name
+#             factor_name_list = [path.stem for path in factor_dir.glob('*.parquet')]
+#             
+#             # 筛选相关性
+#             if corr_thresh is not None:
+#                 filtered_factor_list = self.filtered_factors.get((data_date_start, data_date_end, process_name))
+#                 if filtered_factor_list is None:
+#                     filtered_factor_list = filter_func(factor_name_list, data_dir)
+#                     self.filtered_factors[(data_date_start, data_date_end, process_name)] = filtered_factor_list
+#                 factor_name_list = filtered_factor_list
+#             
+#             # 构建评估函数
+#             eval_func = partial(eval_one_factor_one_period, date_start=date_start, date_end=date_end,
+#                                 data_date_start=data_date_start, data_date_end=data_date_end,
+#                                 process_name=process_name, test_name=test_name, tag_name=tag_name, 
+#                                 data_dir=data_dir, processed_data_dir=processed_data_dir,
+#                                 valid_prop_thresh=valid_prop_thresh, fee=fee, 
+#                                 price_data_path=self.price_data_path, mode=mode)
+#             
+#             # 收集此process的所有任务
+#             all_tasks_info.append({
+#                 'process_name': process_name,
+#                 'eval_func': eval_func,
+#                 'factor_name_list': factor_name_list,
+#                 'process_res_path': process_res_path
+#             })
+#         
+#         # 如果没有任务需要执行，直接返回结果
+#         if not all_tasks_info:
+#         
+#             # 将所有任务转换为(eval_func, factor_name)对
+#             all_tasks = []
+#             task_to_process_map = {}  # 用于跟踪每个任务属于哪个process
+#             
+#             for task_info in all_tasks_info:
+#                 process_name = task_info['process_name']
+#                 eval_func = task_info['eval_func']
+#                 for factor_name in task_info['factor_name_list']:
+#                     task_id = len(all_tasks)
+#                     all_tasks.append((eval_func, factor_name))
+#                     task_to_process_map[task_id] = task_info
+#             
+#             # 执行所有任务
+#             results_by_process = {}  # 按process分组的结果
+#             
+#             if self.n_workers is None or self.n_workers == 1:
+#                 # 单进程执行
+#                 for task_id, (eval_func, factor_name) in enumerate(tqdm(all_tasks, desc=f'{self.eval_name} - {period_name}')):
+#                     res_dict = eval_func(factor_name)
+#                     if res_dict is not None:
+#                         process_info = task_to_process_map[task_id]
+#                         process_name = process_info['process_name']
+#                         if process_name not in results_by_process:
+#                             results_by_process[process_name] = []
+#                         results_by_process[process_name].append(res_dict)
+#             else:
+#                 # 多进程执行
+#                 with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
+#                     futures = [executor.submit(eval_func, factor_name) for eval_func, factor_name in all_tasks]
+#                     for task_id, future in enumerate(tqdm(as_completed(futures), total=len(futures), 
+#                                                          desc=f'{self.eval_name} - {period_name}')):
+#                         res_dict = future.result()
+#                         if res_dict is not None:
+#                             process_info = task_to_process_map[task_id]
+#                             process_name = process_info['process_name']
+#                             if process_name not in results_by_process:
+#                                 results_by_process[process_name] = []
+#                             results_by_process[process_name].append(res_dict)
+#             
+#             # 将结果按process分组保存并添加到结果列表
+#             for task_info in all_tasks_info:
+#                 process_name = task_info['process_name']
+#                 process_res_path = task_info['process_res_path']
+#                 
+#                 if process_name in results_by_process and results_by_process[process_name]:
+#                     res_df = pd.DataFrame(results_by_process[process_name])
+#                     res_df_list.append(res_df)
+#                     res_df.to_csv(process_res_path, index=None)
+#         
+#         # return pd.concat(res_df_list, axis=0, ignore_index=True) if res_df_list else pd.DataFrame()
+#     
+#         res = pd.concat(res_df_list, axis=0, ignore_index=True) if res_df_list else pd.DataFrame()
+#         self._save_factor_eval(res, period_name)
+#         self._plot_sharpe_dist(period_name, res)
+#         # self._plot_adf_and_sharpe(period_name, res)
+#         # if len(self.process_name_list) == 2:
+#         #     self._plot_diff(period_name, res)
+# =============================================================================
   
 # =============================================================================
 #     def eval_one_period(self, date_start, date_end, data_date_start=None, data_date_end=None, process_name_list=None):
@@ -650,8 +812,8 @@ class FactorEvaluation:
         
         ax0 = fig.add_subplot(spec[:, :])
         ax0.set_title(f'{title}', fontsize=FONTSIZE_L1, pad=25)
-        for process_name, group_data in res.groupby('process_name'):
-            ax0.hist(group_data['sharpe_ratio'], label=process_name, alpha=.5, bins=50)
+        for (test_name, process_name), group_data in res.groupby(['test_name', 'process_name']):
+            ax0.hist(group_data['net_sharpe_ratio'], label=f'{test_name}_{process_name}', alpha=.5, bins=50)
         
         for ax in [ax0,]:
             ax.grid(linestyle=":")
