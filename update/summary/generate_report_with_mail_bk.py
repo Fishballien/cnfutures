@@ -56,44 +56,6 @@ from utils.logutils import FishStyleLogger
 
 
 # %%
-# Helper function to determine the correct data path
-def get_model_data_paths(model_dir, model_info):
-    """
-    Determine the correct paths for model data based on configuration.
-    
-    Parameters:
-    -----------
-    model_dir : Path
-        Base model directory
-    model_info : dict
-        Model information containing model_name, test_name, and optionally rolling_model
-        
-    Returns:
-    --------
-    dict : Dictionary containing paths for different data types
-    """
-    model_name = model_info['model_name']
-    test_name = model_info['test_name']
-    rolling_model = model_info.get('rolling_model')
-    
-    if rolling_model:
-        # Use rolling_model path structure
-        base_path = model_dir / model_name / 'rolling_model' / rolling_model
-        return {
-            'test_data': base_path / 'test' / test_name / 'data',
-            'predict': base_path / 'predict',  # Not typically used for rolling models
-            'pos': base_path / 'pos'  # Position data might be in pos directory
-        }
-    else:
-        # Use original path structure
-        base_path = model_dir / model_name
-        return {
-            'test_data': base_path / 'test' / test_name / 'data',
-            'predict': base_path / 'predict',
-            'pos': base_path / 'test' / test_name / 'data'  # Position data in test data directory
-        }
-
-
 # Utility function for creating PDF pages with plots
 def create_pdf_page(pdf, title, subtitle=None, figsize=(11, 15)):
     """Create a new page in the PDF with the given title."""
@@ -121,17 +83,10 @@ def plot_daily_returns_to_axis(ax, model_mapping, model_dir, start_date, end_dat
     
     for tag_name, model_info in model_mapping.items():
         model_name = model_info['model_name']
-        rolling_model = model_info.get('rolling_model')
-        paths = get_model_data_paths(model_dir, model_info)
+        test_name = model_info['test_name']
 
-        # 根据是否有rolling_model决定文件名
-        if rolling_model:
-            file_suffix = f"pos_{model_name}_{rolling_model}"
-        else:
-            file_suffix = f"predict_{model_name}"
-            
-        lob_gp_path = paths['test_data'] / f'gpd_{file_suffix}.pkl'
-        lob_hsr_path = paths['test_data'] / f'hsr_{file_suffix}.pkl'
+        lob_gp_path = model_dir / model_name / 'test' / test_name / 'data' / f'gpd_predict_{model_name}.pkl'
+        lob_hsr_path = model_dir / model_name / 'test' / test_name / 'data' / f'hsr_predict_{model_name}.pkl'
 
         with open(lob_gp_path, 'rb') as f:
             lob_gp = pickle.load(f)
@@ -189,18 +144,11 @@ def plot_cumulative_returns_to_axis(ax, model_mapping, model_dir, start_date, fe
     
     for tag_name, model_info in model_mapping.items():
         model_name = model_info['model_name']
+        test_name = model_info['test_name']
         prod_name = model_info['prod_name']
-        rolling_model = model_info.get('rolling_model')
-        paths = get_model_data_paths(model_dir, model_info)
         
-        # 根据是否有rolling_model决定文件名
-        if rolling_model:
-            file_suffix = f"pos_{model_name}_{rolling_model}"
-        else:
-            file_suffix = f"predict_{model_name}"
-            
-        lob_gp_path = paths['test_data'] / f'gpd_{file_suffix}.pkl'
-        lob_hsr_path = paths['test_data'] / f'hsr_{file_suffix}.pkl'
+        lob_gp_path = model_dir / model_name / 'test' / test_name / 'data' / f'gpd_predict_{model_name}.pkl'
+        lob_hsr_path = model_dir / model_name / 'test' / test_name / 'data' / f'hsr_predict_{model_name}.pkl'
         
         with open(lob_gp_path, 'rb') as f:
             lob_gp = pickle.load(f)
@@ -244,11 +192,15 @@ def plot_cumulative_returns_to_axis(ax, model_mapping, model_dir, start_date, fe
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 
 # Function to directly plot price and positions
-def plot_price_and_positions_to_axis(fig, axes, price_path, model_mapping, model_dir, 
+def plot_price_and_positions_to_axis(fig, axes, price_path, model_mapping, model_dir_mapping, 
                                     start_date, end_date, instruments=['IC', 'IM']):
     """
     Plot price and positions directly to the provided axes.
     """
+    # Convert dates to Timestamp objects if needed
+    # start_date = pd.Timestamp(start_date)
+    # end_date = pd.Timestamp(end_date) + time
+    
     # Load price data
     price_data = pd.read_parquet(price_path)
     
@@ -258,37 +210,30 @@ def plot_price_and_positions_to_axis(fig, axes, price_path, model_mapping, model
     
     for tag_name, model_config in model_mapping.items():
         model_name = model_config.get('model_name')
+        test_name = model_config.get('test_name')
         model_color = model_config.get('color')
-        rolling_model = model_config.get('rolling_model')
-        paths = get_model_data_paths(model_dir, model_config)
         
         model_colors[tag_name] = model_color
         
-        # 根据是否有rolling_model决定文件名
-        if rolling_model:
-            file_suffix = f"{model_name}_{rolling_model}"
-        else:
-            file_suffix = f"predict_{model_name}"
+        model_pos_path = model_dir_mapping['model'] / model_name / 'test' / test_name / 'data' / f'pos_predict_{model_name}.parquet'
         
-        # Try different possible position file locations
-        possible_pos_paths = [
-            paths['pos'] / f'pos_{file_suffix}.parquet',  # For rolling models
-            paths['test_data'] / f'pos_{file_suffix}.parquet',  # For regular models
-        ]
-        
-        model_pos = None
-        for pos_path in possible_pos_paths:
-            if pos_path.exists():
-                model_pos = pd.read_parquet(pos_path)
-                break
-        
-        if model_pos is not None:
-            model_positions[tag_name] = model_pos
-        else:
-            print(f"Warning: Could not find position data for {tag_name}")
+        model_pos = pd.read_parquet(model_pos_path)
+        model_positions[tag_name] = model_pos
     
     # Filter for required instruments
     price_data = price_data[instruments]
+    
+# =============================================================================
+#     # Filter data to required date range
+#     price_data = price_data.loc[(price_data.index >= start_date) & (price_data.index <= end_date)]
+#     
+#     # Filter model positions to same date range
+#     for model_name in model_positions:
+#         model_positions[model_name] = model_positions[model_name].loc[
+#             (model_positions[model_name].index >= start_date) & 
+#             (model_positions[model_name].index <= end_date)
+#         ]
+# =============================================================================
         
     # Filter data to required date range
     price_data = price_data.loc[start_date:end_date]
@@ -426,15 +371,8 @@ def load_comparison_data(rt_perdist_dir, model_dir, model_info, date):
     rt_pos: Runtime positions dataframe
     """
     model_name = model_info['model_name']
+    test_name = model_info['test_name']
     prod_name = model_info['prod_name']
-    rolling_model = model_info.get('rolling_model')
-    paths = get_model_data_paths(model_dir, model_info)
-    
-    # 根据是否有rolling_model决定文件名
-    if rolling_model:
-        file_suffix = f"{model_name}_{rolling_model}"
-    else:
-        file_suffix = f"predict_{model_name}"
     
     # Load runtime data
     date_format = datetime.strftime(datetime.strptime(date, '%Y-%m-%d'), '%Y%m%d')
@@ -452,43 +390,17 @@ def load_comparison_data(rt_perdist_dir, model_dir, model_info, date):
     
     # Load backtest data
     try:
-        # Try different possible prediction file locations
-        possible_pred_paths = [
-            paths['predict'] / f'predict_{model_name}.parquet',  # Standard location
-            model_dir / model_name / 'predict' / f'predict_{model_name}.parquet',  # Fallback
-        ]
-        
-        bt_pred_his = None
-        for pred_path in possible_pred_paths:
-            if pred_path.exists():
-                bt_pred_his = pd.read_parquet(pred_path)
-                break
-        
-        if bt_pred_his is None:
-            raise FileNotFoundError(f"Could not find prediction file for {model_name}")
-            
+        bt_pred_path = model_dir / f'{model_name}/predict/predict_{model_name}.parquet'
+        bt_pred_his = pd.read_parquet(bt_pred_path)
         bt_pred = bt_pred_his.loc[date]
         
-        # Try different possible position file locations
-        possible_pos_paths = [
-            paths['pos'] / f'pos_{file_suffix}.parquet',  # For rolling models
-            paths['test_data'] / f'pos_{file_suffix}.parquet',  # For regular models
-        ]
-        
-        bt_pos_his = None
-        for pos_path in possible_pos_paths:
-            if pos_path.exists():
-                bt_pos_his = pd.read_parquet(pos_path)
-                break
-        
-        if bt_pos_his is None:
-            raise FileNotFoundError(f"Could not find position file for {model_name}")
-            
+        bt_pos_path = model_dir / model_name / 'test' / test_name / 'data' / f'pos_predict_{model_name}.parquet'
+        bt_pos_his = pd.read_parquet(bt_pos_path)
         bt_pos = bt_pos_his.loc[date]
         
         return bt_pred, rt_pred, bt_pos, rt_pos
     except (FileNotFoundError, KeyError) as e:
-        print(f"Error loading backtest data for {model_name}: {e}, {possible_pred_paths}")
+        print(f"Error loading backtest data for {model_name}: {e}")
         return None, None, None, None
 
 # Main function to generate integrated PDF report
@@ -520,6 +432,12 @@ def generate_integrated_pdf_report(
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Define model_dir_mapping
+    model_dir_mapping = {
+        'model': model_dir,
+        'merged_model': model_dir
+    }
     
     # Create PDF file
     pdf_path = save_dir / f"integrated_analysis_report_{target_date}.pdf"
@@ -586,14 +504,20 @@ def generate_integrated_pdf_report(
         
         try:
             plot_price_and_positions_to_axis(
-                fig, axes, price_path, model_mapping, model_dir, 
+                fig, axes, price_path, model_mapping, model_dir_mapping, 
                 period_start_date, period_end_date, instruments
             )
             
             # Make plots smaller
             for ax in axes:
                 ax.tick_params(labelsize=8)
+                # if hasattr(ax, 'title') and ax.title is not None:
+                #     ax.title.set_fontsize(10)
+                    # ax.title.set_pad(10)
                 
+                # Reduce legend size if it exists
+                # if ax.get_legend() is not None:
+                #     ax.get_legend().set_fontsize(7)
         except Exception as e:
             traceback.print_exc()
             axes[0].text(0.5, 0.5, f"Error generating price and positions plot: {str(e)}", 
@@ -843,7 +767,7 @@ def generate_report(
     price_path = Path(config.get('price_path', '.'))
     model_dir = Path(config.get('model_dir', '.'))
     rt_perdist_dir = Path(config.get('rt_perdist_dir', '.'))
-    save_dir = Path(config.get('save_dir', '.')) / config_name / actual_target_date
+    save_dir = Path(config.get('save_dir', '.')) / actual_target_date
     instruments = config.get('instruments', ['IC', 'IM'])
     
     log.info(f"Generating integrated PDF report for {actual_target_date}")
