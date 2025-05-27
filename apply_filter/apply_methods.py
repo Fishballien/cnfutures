@@ -64,57 +64,19 @@ def conditional_mul_filter(alpha, pos_filter=None, neg_filter=None):
     # 创建结果副本
     filtered_alpha = alpha.copy()
     
-    # 如果提供了正值过滤器，应用到正值
+    # 如果提供了正值过滤器，先重新索引然后应用到正值
     if pos_filter is not None:
+        # 重新索引pos_filter以匹配alpha的索引和列
+        pos_filter_aligned = pos_filter.reindex(index=alpha.index, columns=alpha.columns)
         positive_mask = alpha > 0
-        filtered_alpha[positive_mask] = alpha[positive_mask] * pos_filter[positive_mask]
+        filtered_alpha[positive_mask] = alpha[positive_mask] * pos_filter_aligned[positive_mask]
     
-    # 如果提供了负值过滤器，应用到负值
+    # 如果提供了负值过滤器，先重新索引然后应用到负值
     if neg_filter is not None:
+        # 重新索引neg_filter以匹配alpha的索引和列
+        neg_filter_aligned = neg_filter.reindex(index=alpha.index, columns=alpha.columns)
         negative_mask = alpha < 0
-        filtered_alpha[negative_mask] = alpha[negative_mask] * neg_filter[negative_mask]
+        filtered_alpha[negative_mask] = alpha[negative_mask] * neg_filter_aligned[negative_mask]
     
     return filtered_alpha
 
-
-# 使用示例
-if __name__ == "__main__":
-    # 示例数据
-    dates = pd.date_range('2023-01-01', periods=5)
-    stocks = ['AAPL', 'GOOGL', 'MSFT']
-    
-    # 创建示例alpha数据
-    alpha_data = pd.DataFrame(
-        np.random.randn(5, 3), 
-        index=dates, 
-        columns=stocks
-    )
-    
-    # 创建示例signal数据（可能有不同的索引/列）
-    signal_data = pd.DataFrame(
-        np.random.uniform(0.5, 1.0, (5, 3)), 
-        index=dates, 
-        columns=stocks
-    )
-    
-    # 方法1：使用signal过滤
-    result1 = apply_signal_filter(alpha_data, signal_data)
-    print("Signal过滤结果:")
-    print(result1)
-    print()
-    
-    # 方法2：使用条件过滤
-    pos_filter_data = pd.DataFrame(
-        np.random.uniform(0.8, 1.2, (5, 3)), 
-        index=dates, 
-        columns=stocks
-    )
-    neg_filter_data = pd.DataFrame(
-        np.random.uniform(0.6, 1.0, (5, 3)), 
-        index=dates, 
-        columns=stocks
-    )
-    
-    result2 = apply_conditional_filter(alpha_data, pos_filter_data, neg_filter_data)
-    print("条件过滤结果:")
-    print(result2)
