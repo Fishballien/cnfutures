@@ -986,7 +986,7 @@ if __name__ == "__main__":
     # ]
     
     # 方式2: 使用新的dict格式，支持自定义路径
-    compare_name = "tamtratio_lt3_avg"
+    compare_name = "compare_oa_and_netna_and_ot"
     factor_info_list_dict = [
         # {
         #     "tag_name": None,
@@ -995,21 +995,48 @@ if __name__ == "__main__":
         #     "test_name": None,
         #     "custom_path": "/mnt/Data/xintang/CNIndexFutures/timeseries/factor_test/results/merge_selected_factors/batch_till20_batch_test_v2_icim_s1_m0/150101_160301/test/icim_intraday_noscale_around_op05cl0"  # 自定义路径，数据在 /path/to/custom/results/data/ 下
         # },
+        # {
+        #   "index": 0,
+        #   "tag_name": "zxt_select_250509",
+        #   "process_name": "Batch18_250425/org_trans_v1_TS_dod_all_v1_TS_final_scale_v0",
+        #   "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w245d_q0.02_i5-minmax_w245d_q0.02",
+        #   "test_name": "icim_intraday_noscale_around_op05cl0",
+        #   "is_target": True
+        # },
+        # {
+        #   "index": 1,
+        #   "tag_name": "zxt",
+        #   "process_name": "Batch18_250425/tamtratio_lt3_avg",
+        #   "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-selfavg_tamt_v0_lt3_imb01-rollingAggMinuteMinMaxScale_w245d_q0.02_i5",
+        #   "test_name": "icim_intraday_scale_around_op05cl0",
+        #   "is_target": False
+        # },
         {
           "index": 0,
           "tag_name": "zxt_select_250509",
           "process_name": "Batch18_250425/org_trans_v1_TS_dod_all_v1_TS_final_scale_v0",
           "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w245d_q0.02_i5-minmax_w245d_q0.02",
           "test_name": "icim_intraday_noscale_around_op05cl0",
-          "is_target": True
+          "is_target": True,
+          "shortcut": 'order',
         },
         {
           "index": 1,
-          "tag_name": "zxt",
-          "process_name": "Batch18_250425/tamtratio_lt3_avg",
-          "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-selfavg_tamt_v0_lt3_imb01-rollingAggMinuteMinMaxScale_w245d_q0.02_i5",
-          "test_name": "icim_intraday_scale_around_op05cl0",
-          "is_target": False
+          "tag_name": "zxt_select_250509",
+          "process_name": "Batch20_250508/org_trans_v2_TS_dod_all_v1_TS_final_scale_v0",
+          "factor_name": "TimeRangeOANet_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w245d_q0.02_i5-minmax_w245d_q0.02",
+          "test_name": "icim_intraday_noscale_around_op05cl0",
+          "is_target": False,
+          "shortcut": 'order-cancel',
+        },
+        {
+          "index": 2,
+          "tag_name": "zxt_select_250509",
+          "process_name": "Batch25_250523/org_trans_v1_TS_dod_all_v1_TS_final_scale_v0",
+          "factor_name": "TimeRangeOTNet_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w245d_q0.02_i5-minmax_w245d_q0.02",
+          "test_name": "icim_intraday_noscale_around_op05cl0",
+          "is_target": False,
+          "shortcut": 'order-trade',
         },
       
     ]

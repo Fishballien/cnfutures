@@ -42,7 +42,7 @@ def read_parquet_files(folder_path: str, file_patterns: List[str] = None,
         parquet_files = list(folder_path.glob('*.parquet'))
         for file_path in parquet_files:
             file_name = file_path.stem  # 去掉.parquet后缀
-            files_dict[file_name] = pd.read_parquet(file_path)
+            files_dict[file_name] = {'filter_signal': pd.read_parquet(file_path)}
     else:
         # 根据指定模式读取文件
         for pattern in file_patterns:
@@ -88,7 +88,7 @@ def read_parquet_files(folder_path: str, file_patterns: List[str] = None,
                 pattern_files = list(folder_path.glob(f'{pattern}*.parquet'))
                 for file_path in pattern_files:
                     file_name = file_path.stem
-                    files_dict[file_name] = pd.read_parquet(file_path)
+                    files_dict[file_name] = {'filter_signal': pd.read_parquet(file_path)}
     
     return files_dict
 
@@ -142,7 +142,7 @@ def execute_filter_task(task: Dict, apply_filter_module_globals: Dict) -> bool:
             return False
         
         # 执行过滤
-        filtered_result = filter_func(alpha_df, filter_data)
+        filtered_result = filter_func(alpha_df, **filter_data)
         
         # 确保保存目录存在
         os.makedirs(os.path.dirname(save_path), exist_ok=True)

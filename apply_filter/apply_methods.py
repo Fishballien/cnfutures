@@ -14,7 +14,7 @@ emoji: 🔔 ⏳ ⏰ 🔒 🔓 🛑 🚫 ❗ ❓ ❌ ⭕ 🚀 🔥 💧 💡 🎵
 import pandas as pd
 import numpy as np
 
-def mul_filter(target_alpha, signal_df):
+def mul_filter(target_alpha, filter_signal):
     """
     通过重新索引signal来匹配目标alpha，然后相乘应用过滤器
     
@@ -22,7 +22,7 @@ def mul_filter(target_alpha, signal_df):
     -----------
     target_alpha : pd.DataFrame
         目标alpha数据，作为基准的索引和列
-    signal_df : pd.DataFrame  
+    filter_signal : pd.DataFrame  
         信号数据，需要重新索引以匹配target_alpha
         
     Returns:
@@ -35,7 +35,7 @@ def mul_filter(target_alpha, signal_df):
     alpha_columns = target_alpha.columns
     
     # 重新索引signal以匹配目标alpha的索引和列
-    signal_aligned = signal_df.reindex(index=alpha_index, columns=alpha_columns)
+    signal_aligned = filter_signal.reindex(index=alpha_index, columns=alpha_columns)
     
     # 与目标alpha相乘
     result = target_alpha * signal_aligned
