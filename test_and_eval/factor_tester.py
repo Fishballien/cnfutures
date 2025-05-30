@@ -52,12 +52,13 @@ from test_and_eval.testutils import analyze_returns_by_interval, get_factor_basi
 # %% 
 class FactorTest:
     
-    def __init__(self, process_name, tag_name, factor_data_dir, test_name='', result_dir=None, params=None,
+    def __init__(self, process_name, tag_name, factor_data_dir, test_name='', result_dir=None, save_dir=None, params=None,
                  skip_plot=False, n_workers=1, date_start=None, date_end=None, check_consistency=True):
         self.process_name = process_name
         self.tag_name = tag_name
         self.factor_data_dir = Path(factor_data_dir)
         self.result_dir = result_dir
+        self.save_dir = save_dir
         self.params = params
         self.test_name = test_name
         self.skip_plot = skip_plot
@@ -80,7 +81,7 @@ class FactorTest:
         self.path_config = load_path_config(project_dir)
         
         result_dir = self.result_dir or Path(self.path_config['result'])
-        self.result_dir = result_dir / 'test' / self.test_name
+        self.result_dir = self.save_dir or result_dir / 'test' / self.test_name
         self.param_dir = Path(self.path_config['param'])
         
     def _init_dirs(self):
