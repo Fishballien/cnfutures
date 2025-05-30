@@ -88,9 +88,11 @@ class FactorTest:
         self.factor_dir = (self.factor_data_dir / self.process_name if self.process_name is not None
                            else self.factor_data_dir)
         save_dir_prefix = f'{self.tag_name}/{self.process_name}' if self.tag_name is not None else f'{self.process_name}'
-        save_dir = (self.result_dir / save_dir_prefix if self.process_name is not None
-                    else self.result_dir)
-        save_dir = save_dir
+        if self.save_dir is not None:
+            save_dir = self.save_dir
+        else:
+            save_dir = (self.result_dir / save_dir_prefix if self.process_name is not None
+                        else self.result_dir)
         
         self.data_dir = save_dir / 'data'
         self.factor_info_dir = save_dir / 'factor_info'
