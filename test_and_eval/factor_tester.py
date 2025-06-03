@@ -30,6 +30,10 @@ from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
+# %%
+os.environ["OMP_NUM_THREADS"] = "1"
+
+
 # %% add sys path
 file_path = Path(__file__).resolve()
 file_dir = file_path.parents[0]

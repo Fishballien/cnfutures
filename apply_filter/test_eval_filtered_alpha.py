@@ -12,16 +12,17 @@ emoji: 🔔 ⏳ ⏰ 🔒 🔓 🛑 🚫 ❗ ❓ ❌ ⭕ 🚀 🔥 💧 💡 🎵
 
 """
 # %% imports
-import os
 import sys
 from pathlib import Path
 import pandas as pd
-import numpy as np
 from tqdm import tqdm
 from typing import Union, Dict, Any, Optional, List
 import yaml
-from functools import partial
 import concurrent.futures
+import multiprocessing
+
+# 设置多进程启动方法为spawn，避免OpenMP fork问题
+multiprocessing.set_start_method('spawn', force=True)
 
 
 # %% add sys path
@@ -29,6 +30,52 @@ file_path = Path(__file__).resolve()
 file_dir = file_path.parents[0]
 project_dir = file_path.parents[1]
 sys.path.append(str(project_dir))
+
+
+# %% 独立的评估任务执行函数（放在类外，避免多进程调用类方法的问题）
+def execute_eval_task(task: Dict, eval_date_start: str, eval_date_end: str,
+                      eval_config: Dict, price_path: str):
+    """
+    执行单个评估任务的独立函数
+    
+    Args:
+        task: 评估任务字典
+        eval_date_start: 评估开始日期
+        eval_date_end: 评估结束日期
+        eval_config: 评估配置
+        price_path: 价格数据路径
+        
+    Returns:
+        Dict: 评估结果字典，失败时返回None
+    """
+    try:
+        eval_inputs = {
+            "factor_name": task['factor_name'],
+            "date_start": eval_date_start,
+            "date_end": eval_date_end,
+            "data_date_start": eval_date_start,
+            "data_date_end": eval_date_end,
+            "process_name": task['process_name'],
+            "test_name": task['test_name'],
+            "tag_name": task['tag_name'],
+            "data_dir": task['data_dir'],
+            "processed_data_dir": task['processed_data_dir'],
+            "valid_prop_thresh": eval_config['valid_prop_thresh'],
+            "fee": eval_config['fee'],
+            "price_data_path": price_path,
+            "mode": task['mode'],
+        }
+        
+        result = eval_one_factor_one_period(**eval_inputs)
+        
+        # 添加评估类型标识
+        result['eval_type'] = task['eval_type']
+        
+        return result
+        
+    except Exception as e:
+        print(f"执行评估任务失败 {task['factor_name']}: {str(e)}")
+        return None
 
 
 # %%
@@ -66,7 +113,7 @@ class TestEvalFilteredAlpha:
         # 设置目录路径
         self.filtered_base_dir = self.result_dir / 'apply_filters_on_merged' / f'{merge_name}'
         self.merged_dir = self.result_dir / 'merge_selected_factors' / f'{merge_name}'
-        self.test_eval_dir = self.result_dir / 'test_eval_filtered_alpha' / test_eval_filtered_alpha_name
+        self.test_eval_dir = self.result_dir / 'test_eval_filtered_alpha' / f'{merge_name}_{test_eval_filtered_alpha_name}'
         
         # 确保输出目录存在
         self.test_eval_dir.mkdir(parents=True, exist_ok=True)
@@ -117,7 +164,7 @@ class TestEvalFilteredAlpha:
         # 2. 测试原始alpha
         self._test_original_alpha(period_name)
         
-        # 3. 评估所有测试结果
+        # 3. 评估所有测试结果（合并到一个文件）
         self._evaluate_all_results(date_start, date_end, eval_date_start, eval_date_end, 
                                  period_name, eval_period_name)
         
@@ -190,8 +237,8 @@ class TestEvalFilteredAlpha:
                         tag_name=None,
                         factor_data_dir=filtered_apply_dir,
                         test_name=test_name,
-                        save_dir=test_result_dir,  # 直接使用test_eval_period_dir
-                        n_workers=self.max_workers,  # 改为n_workers
+                        save_dir=test_result_dir,
+                        n_workers=self.max_workers,
                         skip_plot=test_info.get('skip_plot', True)
                     )
                     
@@ -241,12 +288,12 @@ class TestEvalFilteredAlpha:
             
             # 创建测试器实例
             tester = test_class(
-                process_name=None,  # 为原始alpha设置process_name
+                process_name=None,
                 tag_name=None,
                 factor_data_dir=self.merged_period_dir,
                 test_name=test_name,
-                save_dir=test_result_dir,  # 直接使用test_eval_period_dir
-                n_workers=self.max_workers,  # 改为n_workers
+                save_dir=test_result_dir,
+                n_workers=self.max_workers,
                 skip_plot=test_info.get('skip_plot', True)
             )
             
@@ -260,7 +307,7 @@ class TestEvalFilteredAlpha:
     def _evaluate_all_results(self, date_start: str, date_end: str, eval_date_start: str, 
                             eval_date_end: str, period_name: str, eval_period_name: str):
         """
-        评估所有测试结果
+        评估所有测试结果并合并到一个文件
         
         Args:
             date_start: 开始日期
@@ -303,7 +350,7 @@ class TestEvalFilteredAlpha:
                     'process_name': '',
                     'data_dir': data_dir,
                     'processed_data_dir': self.merged_period_dir,
-                    'eval_file_name': f'eval_org_alpha_{test_name}_{eval_period_name}.csv'
+                    'eval_type': 'original'
                 })
         
         # 2. 评估过滤后的alpha
@@ -333,74 +380,49 @@ class TestEvalFilteredAlpha:
                                 'process_name': '',
                                 'data_dir': data_dir,
                                 'processed_data_dir': processed_data_dir,
-                                'eval_file_name': f'eval_filtered_{apply_filters_name}_{sub_dir}_{test_name}_{eval_period_name}.csv'
+                                'eval_type': 'filtered'
                             })
         
         # 执行评估任务
         print(f"准备执行 {len(eval_tasks)} 个评估任务")
         
+        all_results = []
+        
         if self.max_workers == 1 or self.max_workers is None:
             # 单进程执行
             for task in tqdm(eval_tasks, desc="评估进度"):
-                self._execute_eval_task(task, eval_date_start, eval_date_end, 
-                                      eval_config, price_path, eval_result_dir)
+                result = execute_eval_task(task, eval_date_start, eval_date_end, 
+                                          eval_config, price_path)
+                if result is not None:
+                    all_results.append(result)
         else:
             # 多进程执行
             with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
                 futures = [
                     executor.submit(
-                        self._execute_eval_task, task, eval_date_start, eval_date_end,
-                        eval_config, price_path, eval_result_dir
+                        execute_eval_task, task, eval_date_start, eval_date_end,
+                        eval_config, price_path
                     ) for task in eval_tasks
                 ]
                 
                 for future in tqdm(concurrent.futures.as_completed(futures), 
                                  total=len(futures), desc="评估进度"):
                     try:
-                        future.result()
+                        result = future.result()
+                        if result is not None:
+                            all_results.append(result)
                     except Exception as e:
                         print(f"评估任务失败: {str(e)}")
-    
-    def _execute_eval_task(self, task: Dict, eval_date_start: str, eval_date_end: str,
-                          eval_config: Dict, price_path: str, eval_result_dir: Path):
-        """
-        执行单个评估任务
         
-        Args:
-            task: 评估任务字典
-            eval_date_start: 评估开始日期
-            eval_date_end: 评估结束日期
-            eval_config: 评估配置
-            price_path: 价格数据路径
-            eval_result_dir: 评估结果目录
-        """
-        try:
-            eval_inputs = {
-                "factor_name": task['factor_name'],
-                "date_start": eval_date_start,
-                "date_end": eval_date_end,
-                "data_date_start": eval_date_start,
-                "data_date_end": eval_date_end,
-                "process_name": task['process_name'],
-                "test_name": task['test_name'],
-                "tag_name": task['tag_name'],
-                "data_dir": task['data_dir'],
-                "processed_data_dir": task['processed_data_dir'],
-                "valid_prop_thresh": eval_config['valid_prop_thresh'],
-                "fee": eval_config['fee'],
-                "price_data_path": price_path,
-                "mode": task['mode'],
-            }
-            
-            result = eval_one_factor_one_period(**eval_inputs)
-            
-            # 保存评估结果
-            result_df = pd.DataFrame([result])
-            result_path = eval_result_dir / task['eval_file_name']
+        # 合并所有结果并保存到一个文件
+        if all_results:
+            result_df = pd.DataFrame(all_results)
+            result_path = eval_result_dir / f'eval_res_{eval_period_name}.csv'
             result_df.to_csv(result_path, index=False)
-            
-        except Exception as e:
-            print(f"执行评估任务失败 {task['factor_name']}: {str(e)}")
+            print(f"所有评估结果已保存到: {result_path}")
+            print(f"共评估了 {len(all_results)} 个因子")
+        else:
+            print("警告: 没有成功的评估结果")
 
 
 def example_usage():
