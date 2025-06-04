@@ -11,8 +11,10 @@ Created on Wed May 29 2025
 emoji: 🔔 ⏳ ⏰ 🔒 🔓 🛑 🚫 ❗ ❓ ❌ ⭕ 🚀 🔥 💧 💡 🎵 🎶 🧭 📅 🤔 🧮 🔢 📊 📈 📉 🧠 📝
 
 """
+# %%
 import os
 import sys
+import json
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -39,17 +41,20 @@ from data_processing.ts_trans import ts_normalize
 from test_and_eval.factor_evaluation import eval_one_factor_one_period
 
 
+# %%
 def process_group_applied_filters(args):
     """
-    处理单个组的函数，适用于并行执行（过滤后因子版本）
+    处理应用过滤器选定因子的单个组的函数，适用于并行执行
     
     Args:
-        args: 包含所需参数的元组
+        args: 包含所需参数的元组 (group_num, group_info, group_normalization_func, 
+              factor_normalization_func, price_path, fstart)
         
     Returns:
         tuple: (group_num, group_scaled) - 组号和组的标准化后的平均因子
     """
-    group_num, group_info, group_normalization_func, factor_normalization_func, price_path, fstart = args
+    (group_num, group_info, group_normalization_func, factor_normalization_func, 
+     price_path, fstart) = args
     
     price_data = pd.read_parquet(price_path)
     price_index = price_data.loc[fstart:].index
@@ -58,13 +63,14 @@ def process_group_applied_filters(args):
     # 处理组内每个因子
     for idx in group_info.index:
         root_dir = group_info.loc[idx, 'root_dir']
-        factor_name = group_info.loc[idx, 'factor_name']
+        factor_name = group_info.loc[idx, 'factor']
         direction = group_info.loc[idx, 'direction']
         
-        # 加载因子文件
+        # 直接从root_dir读取因子文件
         fac_path = Path(root_dir) / f'{factor_name}.parquet'
+        
         if not fac_path.exists():
-            print(f"警告: 因子文件不存在: {fac_path}")
+            print(f"警告: 未找到因子文件: {fac_path}")
             continue
             
         fac = pd.read_parquet(fac_path)
@@ -76,9 +82,10 @@ def process_group_applied_filters(args):
         group_factor_dict[idx] = (direction * scaled_fac).reindex(index=price_index).replace([-np.inf, np.inf], np.nan).fillna(0)
         group_weight_dict[idx] = 1
     
-    # 如果组内没有有效因子，返回空DataFrame
+    # 如果组内没有有效因子，返回零因子
     if not group_factor_dict:
-        return group_num, pd.DataFrame(index=price_index)
+        zero_factor = pd.DataFrame(0, index=price_index, columns=price_data.columns)
+        return group_num, zero_factor
     
     # 计算组平均值并使用组标准化函数标准化
     group_avg = compute_dataframe_dict_average(group_factor_dict, group_weight_dict)
@@ -86,24 +93,23 @@ def process_group_applied_filters(args):
     return group_num, group_scaled
 
 
-class AppliedFilterMerger:
+class AppliedFiltersMerger:
     
-    def __init__(self, merge_select_applied_filters_name: str, select_name: str, 
-                 merge_name: str, test_eval_filtered_alpha_name: str, max_workers=None):
+    def __init__(self, fac_merge_name, test_eval_filtered_alpha_name, select_name, filter_merge_name, max_workers=None):
         """
-        初始化过滤后因子合并器
+        初始化AppliedFiltersMerger，用于合并应用过滤器选定的因子。
         
         Args:
-            merge_select_applied_filters_name: 合并配置名称
-            select_name: 选择名称
-            merge_name: 原始合并名称
-            test_eval_filtered_alpha_name: 测试评估配置名称
+            fac_merge_name: 因子合并配置名称（决定从哪里读filtered factors）
+            test_eval_filtered_alpha_name: 测试评估过滤alpha配置名称
+            select_name: 选择配置名称  
+            filter_merge_name: 过滤器合并配置名称（决定合并方法）
             max_workers: 最大并行工作进程数
         """
-        self.merge_select_applied_filters_name = merge_select_applied_filters_name
-        self.select_name = select_name
-        self.merge_name = merge_name
+        self.fac_merge_name = fac_merge_name
         self.test_eval_filtered_alpha_name = test_eval_filtered_alpha_name
+        self.select_name = select_name
+        self.filter_merge_name = filter_merge_name
         self.max_workers = max_workers
         
         # 加载路径配置
@@ -112,11 +118,12 @@ class AppliedFilterMerger:
         self.param_dir = Path(self.path_config['param']) / 'merge_selected_applied_filters'
         
         # 设置目录路径
-        self.select_dir = self.result_dir / 'select_applied_filters' / f'{merge_name}_{test_eval_filtered_alpha_name}_{select_name}'
-        self.merged_dir = self.result_dir / 'merge_selected_applied_filters' / f'{merge_name}_{test_eval_filtered_alpha_name}_{select_name}_{merge_select_applied_filters_name}'
+        self.filtered_base_dir = self.result_dir / 'apply_filters_on_merged' / f'{fac_merge_name}'
+        self.select_dir = self.result_dir / 'select_applied_filters' / f'{fac_merge_name}_{test_eval_filtered_alpha_name}_{select_name}'
+        self.merged_dir = self.result_dir / 'merge_selected_applied_filters' / f'{fac_merge_name}_{test_eval_filtered_alpha_name}_{select_name}_{filter_merge_name}'
         
         # 加载配置文件
-        config_path = self.param_dir / f'{merge_select_applied_filters_name}.yaml'
+        config_path = self.param_dir / f'{filter_merge_name}.yaml'
         self.config = self._load_config(config_path)
         
         # 确保输出目录存在
@@ -127,6 +134,12 @@ class AppliedFilterMerger:
     def _load_config(self, config_path: Union[str, Path]) -> Dict[str, Any]:
         """
         加载配置文件
+        
+        参数:
+            config_path (str or Path): 配置文件路径
+            
+        返回:
+            Dict[str, Any]: 配置字典
         """
         config_path = Path(config_path)
         if not config_path.exists():
@@ -146,23 +159,9 @@ class AppliedFilterMerger:
         self.group_normalization_func = partial(ts_normalize, param=group_preprocess_params)
         self.factor_normalization_func = partial(ts_normalize, param=factor_preprocess_params)
         
-    def run_one_period(self, date_start, date_end, eval_date_start=None, eval_date_end=None):
-        """
-        运行单个期间的合并操作
-        
-        Args:
-            date_start: 开始日期
-            date_end: 结束日期
-            eval_date_start: 评估开始日期，如果为None则使用date_start
-            eval_date_end: 评估结束日期，如果为None则使用date_end
-        """
+    def run_one_period(self, date_start, date_end):
         # 生成期间名称
         period_name = period_shortcut(date_start, date_end)
-        
-        if eval_date_start is None:
-            eval_date_start = date_start
-        if eval_date_end is None:
-            eval_date_end = date_end
         
         # 设置此期间的目录
         self.select_period_dir = self.select_dir / period_name
@@ -171,11 +170,17 @@ class AppliedFilterMerger:
         
         self._merge_one_period(period_name)
         self._test_predicted(period_name)
-        self._eval_predicted(eval_date_start, eval_date_end, period_name)
+        self._eval_predicted(date_start, date_end, period_name)
     
     def _merge_one_period(self, period_name):
         """
-        合并指定期间内的过滤后因子
+        合并指定期间的应用过滤器选定因子。
+        
+        Args:
+            period_name: 期间名称
+            
+        Returns:
+            pd.DataFrame: 该期间的合并平均因子
         """
         select_period_dir = self.select_period_dir
         merged_period_dir = self.merged_period_dir
@@ -187,24 +192,32 @@ class AppliedFilterMerger:
         final_selected_factors_path = select_period_dir / 'final_selected_factors.csv'
         
         # 检查最终选定的因子是否存在
-        if not final_selected_factors_path.exists():
-            print(f"未找到期间 {period_name} 的最终选定过滤后因子")
+        if not os.path.exists(final_selected_factors_path):
+            print(f"未找到期间 {period_name} 的最终选定因子")
             return None
         
         # 加载最终选定的因子
         final_selected_factors = pd.read_csv(final_selected_factors_path)
         
-        if len(final_selected_factors) == 0:
-            print(f"期间 {period_name} 没有选定的过滤后因子")
+        print(f"加载了 {len(final_selected_factors)} 个选定的应用过滤器因子")
+        
+        # 不需要过滤原始alpha，因为可以统一处理
+        if final_selected_factors.empty:
+            print(f"期间 {period_name} 没有选定的因子")
+            # 创建零因子作为占位符
+            price_path = self.config['price_path']
+            fstart = self.config['fstart']
+            price_data = pd.read_parquet(price_path)
+            price_index = price_data.loc[fstart:].index
+            zero_factor = pd.DataFrame(0, index=price_index, columns=price_data.columns)
+            zero_factor.to_parquet(output_path)
             return None
+        
+        print(f"选定的因子数量: {len(final_selected_factors)}")
         
         # 按组分组因子
         grouped = final_selected_factors.groupby('group')
         factor_dict, weight_dict = self._process_groups_parallel(grouped, period_name, max_workers=self.max_workers)
-        
-        if not factor_dict:
-            print(f"期间 {period_name} 没有有效的因子组")
-            return None
         
         # 计算跨组的总体平均值
         factor_avg = compute_dataframe_dict_average(factor_dict, weight_dict)
@@ -214,11 +227,19 @@ class AppliedFilterMerger:
         # 保存结果
         factor_scaled.to_parquet(output_path)
         
-        print(f"合并过滤后因子已保存至 {output_path}")
+        print(f"合并的应用过滤器因子已保存至 {output_path}")
         
     def _process_groups_parallel(self, grouped, period_name, max_workers=None):
         """
         并行处理所有组
+        
+        Args:
+            grouped: 分组后的数据
+            period_name: 周期名称
+            max_workers: 最大工作进程数，None表示使用默认值(CPU核心数)
+            
+        Returns:
+            tuple: (factor_dict, weight_dict) - 因子字典和权重字典
         """
         price_path = self.config['price_path']
         fstart = self.config['fstart']
@@ -232,20 +253,91 @@ class AppliedFilterMerger:
         
         if max_workers == 1 or max_workers is None:
             # 单进程顺序处理
-            with tqdm(total=total_groups, desc=f'处理 {period_name} 的过滤后因子Groups [Single]') as pbar:
+            with tqdm(total=total_groups, desc=f'处理 {period_name} 的应用过滤器Groups [Single]') as pbar:
                 for args in group_args:
                     group_num = args[0]
                     try:
                         group_num, group_avg = process_group_applied_filters(args)
-                        if not group_avg.empty:
-                            factor_dict[group_num] = group_avg
-                            weight_dict[group_num] = 1
+                        factor_dict[group_num] = group_avg
+                        weight_dict[group_num] = 1
                     except Exception as exc:
-                        print(f'处理过滤后因子组 {group_num} 时发生错误: {exc}')
+                        print(f'处理应用过滤器组 {group_num} 时发生错误: {exc}')
                     finally:
                         pbar.update(1)
         else:
             # 多进程处理
+            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+                future_to_group = {executor.submit(process_group_applied_filters, args): args[0] for args in group_args}
+        
+                with tqdm(total=total_groups, desc=f'处理 {period_name} 的应用过滤器Groups [Multi]') as pbar:
+                    for future in concurrent.futures.as_completed(future_to_group):
+                        group_num = future_to_group[future]
+                        try:
+                            group_num, group_avg = future.result()
+                            factor_dict[group_num] = group_avg
+                            weight_dict[group_num] = 1
+                        except Exception as exc:
+                            print(f'处理应用过滤器组 {group_num} 时发生错误: {exc}')
+                        finally:
+                            pbar.update(1)
+
+        return factor_dict, weight_dict
+    
+    def _test_predicted(self, period_name):
+        merged_period_dir = self.merged_period_dir
+        
+        process_name = None
+        factor_data_dir = merged_period_dir
+        result_dir = merged_period_dir
+        params = self.config
+        
+        test_list = params['test_list']
+        for test_info in test_list:
+            mode = test_info['mode']
+            test_name = test_info['test_name']
+            if mode == 'test':
+                test_class = FactorTesterByContinuous
+            elif mode == 'trade':
+                test_class = FactorTesterByDiscrete
+            else:
+                NotImplementedError()
+        
+            ft = test_class(process_name, None, factor_data_dir, test_name=test_name, result_dir=result_dir)
+            ft.test_one_factor(f'avg_predict_{period_name}')
+            
+    def _eval_predicted(self, date_start, date_end, period_name):
+        merged_period_dir = self.merged_period_dir
+        max_workers = self.max_workers
+        params = self.config
+        test_list = params['test_list']
+        eval_param = params['eval']
+        price_path = self.config['price_path']
+        factor_name = f'avg_predict_{period_name}'
+        
+        # 准备输入参数列表
+        input_params = []
+        for test_info in test_list:
+            input_params.append((
+                test_info, 
+                factor_name, 
+                date_start, 
+                date_end, 
+                merged_period_dir, 
+                eval_param, 
+                price_path
+            ))
+        
+        total_tasks = len(input_params)
+        res_list = []
+        
+        # 根据max_workers决定是否使用多进程
+        if max_workers == 1 or max_workers is None:
+            # 单进程顺序执行，但显示进度条
+            for params in tqdm(input_params, desc="Processing tests", total=total_tasks):
+                res_dict = process_test_info_applied_filters(*params)
+                res_list.append(res_dict)
+        else:
+            # 多进程并行执行，使用as_completed捕获进度
             with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
                 # 提交所有任务
                 future_to_params = {executor.submit(process_test_info_applied_filters, *params): params for params in input_params}
@@ -262,12 +354,9 @@ class AppliedFilterMerger:
         # 转换为DataFrame
         res_df = pd.DataFrame(res_list)
         res_df.to_csv(merged_period_dir / 'evaluation.csv', index=None)
-
+        
 
 def process_test_info_applied_filters(test_info, factor_name, date_start, date_end, merged_period_dir, eval_param, price_path):
-    """
-    处理测试信息的独立函数（过滤后因子版本）
-    """
     mode = test_info['mode']
     test_name = test_info['test_name']
     eval_inputs = {
@@ -294,19 +383,20 @@ def example_usage():
     """
     使用示例
     """
-    # 初始化AppliedFilterMerger
-    afm = AppliedFilterMerger(
-        merge_select_applied_filters_name='basic_merge',
-        select_name='basic_select',
-        merge_name='merge_v1',
-        test_eval_filtered_alpha_name='basic_test_eval',
+    # 初始化AppliedFiltersMerger
+    afm = AppliedFiltersMerger(
+        fac_merge_name='batch_till20_newma_batch_test_v3_icim_nsr22_m0',
+        test_eval_filtered_alpha_name='corr_and_diffusion_v1',
+        select_name='gt_nsr_ppt',
+        filter_merge_name='m0',
         max_workers=4
     )
     
     # 对单个期间进行合并
-    afm.run_one_period('20240101', '20240331')
+    from datetime import datetime
+    afm.run_one_period(datetime(2015, 1, 1), datetime(2016, 1, 1))
     
-    print("过滤后因子合并完成")
+    print("应用过滤器因子合并完成")
 
 
 if __name__ == "__main__":
