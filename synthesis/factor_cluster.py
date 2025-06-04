@@ -313,7 +313,7 @@ def cluster_by_correlation(data_array, cluster_params=None, linkage_method='aver
 
 
 # %%
-def extract_gp_matrix(selected_factor_info, date_start, date_end, test_dir, data_to_use='gpd', use_direction='all',
+def extract_gp_matrix(selected_factor_info, date_start, date_end, test_dir=None, data_to_use='gpd', use_direction='all',
                       col='return'):
     """
     从文件中提取指定因子和时间段的GP矩阵。
@@ -323,6 +323,7 @@ def extract_gp_matrix(selected_factor_info, date_start, date_end, test_dir, data
     selected_factor_info : pandas.DataFrame
         包含所选因子信息的DataFrame，必须包含以下列:
         ['tag_name', 'process_name', 'factor', 'test_name', 'direction']
+        可选列: ['test_data_dir'] - 如果存在且不为空，将直接使用此路径
         
     date_start : str
         起始日期，格式为'YYYY-MM-DD'
@@ -330,8 +331,10 @@ def extract_gp_matrix(selected_factor_info, date_start, date_end, test_dir, data
     date_end : str
         结束日期，格式为'YYYY-MM-DD'
         
-    test_dir : Path or str
-        包含测试数据的目录路径
+    test_dir : Path, str, or None, optional
+        包含测试数据的目录路径。
+        如果selected_factor_info包含test_data_dir列且所有行都有值，则可以为None
+        默认为None
         
     data_to_use : str, optional
         要使用的数据类型，默认为'gpd'
@@ -344,14 +347,33 @@ def extract_gp_matrix(selected_factor_info, date_start, date_end, test_dir, data
         默认为'all'
         
     col : str, optional
-        从GP数据中提取的列名，默认为'avg'
+        从GP数据中提取的列名，默认为'return'
     
     返回值:
     --------
     numpy.ndarray
         GP矩阵，形状为(n_factors, n_days)，其中每一行对应一个因子的时间序列数据
+        
+    异常:
+    ------
+    ValueError
+        当test_data_dir列不存在且test_dir为None时抛出
+        当某行test_data_dir为空且test_dir为None时抛出
     """
-    test_dir = Path(test_dir) if not isinstance(test_dir, Path) else test_dir
+    import pandas as pd
+    import numpy as np
+    import pickle
+    from pathlib import Path
+    
+    # Check if test_data_dir column exists
+    has_test_data_dir = 'test_data_dir' in selected_factor_info.columns
+    
+    # Validate input parameters
+    if not has_test_data_dir and test_dir is None:
+        raise ValueError("test_dir cannot be None when test_data_dir column is not present")
+    
+    if test_dir is not None:
+        test_dir = Path(test_dir) if not isinstance(test_dir, Path) else test_dir
     
     # Create date range for the specified period
     date_range = pd.date_range(start=date_start, end=date_end, freq='D')
@@ -367,10 +389,26 @@ def extract_gp_matrix(selected_factor_info, date_start, date_end, test_dir, data
         test_name = selected_factor_info.loc[n_fct, 'test_name']
         direction = selected_factor_info.loc[n_fct, 'direction']
         
-        # Determine process directory based on tag_name type
-        process_dir = (test_dir / test_name / tag_name if isinstance(tag_name, str)
-                      else test_dir / test_name)
-        data_dir = process_dir / process_name / 'data'
+        # Determine data directory based on test_data_dir column if available
+        if has_test_data_dir:
+            test_data_dir = selected_factor_info.loc[n_fct, 'test_data_dir']
+            # Check if test_data_dir exists and is not null/empty
+            if pd.notna(test_data_dir) and str(test_data_dir).strip():
+                data_dir = Path(test_data_dir)
+            else:
+                # Fall back to original method - but test_dir must not be None
+                if test_dir is None:
+                    raise ValueError(f"test_dir cannot be None when test_data_dir is empty for factor {factor_name}")
+                process_dir = (test_dir / test_name / tag_name if isinstance(tag_name, str) and tag_name.strip()
+                              else test_dir / test_name)
+                data_dir = process_dir / process_name / 'data'
+        else:
+            # Original method when test_data_dir column doesn't exist - test_dir must not be None
+            if test_dir is None:
+                raise ValueError("test_dir cannot be None when test_data_dir column is not present")
+            process_dir = (test_dir / test_name / tag_name if isinstance(tag_name, str) and tag_name.strip()
+                          else test_dir / test_name)
+            data_dir = process_dir / process_name / 'data'
         
         try:
             # Attempt to read data file
@@ -384,7 +422,7 @@ def extract_gp_matrix(selected_factor_info, date_start, date_end, test_dir, data
                 'all': 'all',
                 'long_only': 'pos' if direction == 1 else 'neg',
                 'short_only': 'neg' if direction == 1 else 'pos',
-                }
+            }
             data = data_dict[direction_dict[use_direction]]
             gp_series = data[(data.index >= date_start) & (data.index <= date_end)
                              ].reindex(date_range)[col].fillna(0)

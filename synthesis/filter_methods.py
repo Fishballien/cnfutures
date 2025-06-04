@@ -143,13 +143,108 @@ def filter_func_v18(data):
                       , 1)
     
 
-def filter_func_dynamic(data, pred_name=None, conditions=None, min_count=3, sort_target='net_sharpe_ratio', sort_ascending=False):
+# =============================================================================
+# def filter_func_dynamic(data, pred_name=None, conditions=None, min_count=3, sort_target='net_sharpe_ratio', sort_ascending=False):
+#     """
+#     Filter data based on comparing values to the row where pred_name matches.
+#     
+#     Parameters:
+#     data (DataFrame): Input dataframe to filter
+#     pred_name (str, optional): The specific pred_name to use as reference. If None, will use absolute thresholds.
+#     conditions (list): List of dictionaries with keys:
+#                      - 'target': column name to compare (e.g., 'net_sharpe_ratio')
+#                      - 'operator': 'greater', 'less', 'equal', 'greater_equal', 'less_equal'
+#                      - 'threshold': absolute value or multiplier of reference value
+#                      - 'is_multiplier': boolean, if True, threshold is treated as multiplier of reference value
+#     min_count (int): Minimum number of results to return
+#     sort_target (str): Column name to use for sorting when selecting top n results
+#     sort_ascending (bool): Sort direction (False for descending, True for ascending)
+#     
+#     Returns:
+#     Series: Boolean mask to filter the dataframe
+#     """
+#     # Get reference row values if pred_name is provided
+#     reference_row = None
+#     if pred_name is not None:
+#         reference = data[data['pred_name'] == pred_name]
+#         
+#         if len(reference) > 0:
+#             reference_row = reference.iloc[0]
+#         else:
+#             print(f"Warning: No data found for pred_name '{pred_name}', will use absolute thresholds")
+#     
+#     # Default condition if none provided
+#     if conditions is None:
+#         conditions = [
+#             {'target': 'net_sharpe_ratio', 'operator': 'greater', 'threshold': 0.9, 'is_multiplier': False},
+#             {'target': 'direction', 'operator': 'greater', 'threshold': 0, 'is_multiplier': False}
+#         ]
+#     
+#     # Build filter based on conditions
+#     filter_mask = pd.Series(True, index=data.index)
+#     
+#     for condition in conditions:
+#         target = condition['target']
+#         operator = condition['operator']
+#         threshold = condition['threshold']
+#         is_multiplier = condition.get('is_multiplier', False)
+#         
+#         # If this is a multiplier and we have a reference row, calculate actual threshold
+#         if is_multiplier and reference_row is not None:
+#             if target in reference_row:
+#                 actual_threshold = reference_row[target] * threshold
+#             else:
+#                 print(f"Warning: Target '{target}' not found in reference row, using absolute threshold")
+#                 actual_threshold = threshold
+#         else:
+#             actual_threshold = threshold
+#         
+#         # Apply comparison
+#         if operator == 'greater':
+#             filter_mask &= data[target] > actual_threshold
+#         elif operator == 'less':
+#             filter_mask &= data[target] < actual_threshold
+#         elif operator == 'equal':
+#             filter_mask &= data[target] == actual_threshold
+#         elif operator == 'greater_equal':
+#             filter_mask &= data[target] >= actual_threshold
+#         elif operator == 'less_equal':
+#             filter_mask &= data[target] <= actual_threshold
+#         else:
+#             raise ValueError(f"Invalid operator: {operator}")
+#     
+#     filtered_data = data[filter_mask]
+#     
+#     # If filtered results are fewer than min_count, select top n by the specified sort_target
+#     if len(filtered_data) < min_count:
+#         # Check if sort_target is in the dataframe
+#         if sort_target not in data.columns:
+#             # Choose first numerical column as fallback
+#             num_cols = data.select_dtypes(include='number').columns
+#             if len(num_cols) > 0:
+#                 sort_col = num_cols[0]
+#             else:
+#                 raise ValueError(f"Sort target '{sort_target}' not found and no numerical column available for sorting")
+#         else:
+#             sort_col = sort_target
+#             
+#         # Sort by sort_col in the specified direction and take top min_count
+#         top_n = data.sort_values(sort_col, ascending=sort_ascending).head(min_count)
+#         return data.index.isin(top_n.index)
+#     else:
+#         return filter_mask
+# =============================================================================
+
+def filter_func_dynamic(data, target=None, conditions=None, min_count=3, sort_target='net_sharpe_ratio', sort_ascending=False):
     """
-    Filter data based on comparing values to the row where pred_name matches.
+    Filter data based on comparing values to the row where target matches.
     
     Parameters:
     data (DataFrame): Input dataframe to filter
-    pred_name (str, optional): The specific pred_name to use as reference. If None, will use absolute thresholds.
+    target (str or dict, optional): 
+        - If str: The specific pred_name to use as reference (original behavior)
+        - If dict: Dictionary with column-value pairs to find reference row (e.g., {'tag_name': 'aaa', 'process_name': 'bbb'})
+        - If None: will use absolute thresholds
     conditions (list): List of dictionaries with keys:
                      - 'target': column name to compare (e.g., 'net_sharpe_ratio')
                      - 'operator': 'greater', 'less', 'equal', 'greater_equal', 'less_equal'
@@ -162,15 +257,29 @@ def filter_func_dynamic(data, pred_name=None, conditions=None, min_count=3, sort
     Returns:
     Series: Boolean mask to filter the dataframe
     """
-    # Get reference row values if pred_name is provided
+    # Get reference row values if target is provided
     reference_row = None
-    if pred_name is not None:
-        reference = data[data['pred_name'] == pred_name]
+    if target is not None:
+        if isinstance(target, str):
+            # Original behavior: use pred_name column
+            reference = data[data['pred_name'] == target]
+        elif isinstance(target, dict):
+            # New behavior: use dictionary conditions to find reference row
+            reference_mask = pd.Series(True, index=data.index)
+            for col, value in target.items():
+                if col in data.columns:
+                    reference_mask &= (data[col] == value)
+                else:
+                    print(f"Warning: Column '{col}' not found in data, ignoring this condition")
+            reference = data[reference_mask]
+        else:
+            raise ValueError("target must be either a string or a dictionary")
         
         if len(reference) > 0:
             reference_row = reference.iloc[0]
+            print(f"Found reference row with conditions: {target}")
         else:
-            print(f"Warning: No data found for pred_name '{pred_name}', will use absolute thresholds")
+            print(f"Warning: No data found for target conditions '{target}', will use absolute thresholds")
     
     # Default condition if none provided
     if conditions is None:
@@ -192,6 +301,7 @@ def filter_func_dynamic(data, pred_name=None, conditions=None, min_count=3, sort
         if is_multiplier and reference_row is not None:
             if target in reference_row:
                 actual_threshold = reference_row[target] * threshold
+                print(f"Using reference-based threshold for {target}: {reference_row[target]} * {threshold} = {actual_threshold}")
             else:
                 print(f"Warning: Target '{target}' not found in reference row, using absolute threshold")
                 actual_threshold = threshold

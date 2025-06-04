@@ -113,10 +113,12 @@ class TestEvalFilteredAlpha:
         # 设置目录路径
         self.filtered_base_dir = self.result_dir / 'apply_filters_on_merged' / f'{merge_name}'
         self.merged_dir = self.result_dir / 'merge_selected_factors' / f'{merge_name}'
-        self.test_eval_dir = self.result_dir / 'test_eval_filtered_alpha' / f'{merge_name}_{test_eval_filtered_alpha_name}'
+        self.test_dir = self.result_dir / 'test_filtered_alpha' / f'{merge_name}'
+        self.eval_dir = self.result_dir / 'eval_filtered_alpha' / f'{merge_name}_{test_eval_filtered_alpha_name}'
         
         # 确保输出目录存在
-        self.test_eval_dir.mkdir(parents=True, exist_ok=True)
+        self.test_dir.mkdir(parents=True, exist_ok=True)
+        self.eval_dir.mkdir(parents=True, exist_ok=True)
         
     def _load_config(self, config_path: Union[str, Path]) -> Dict[str, Any]:
         """
@@ -153,8 +155,10 @@ class TestEvalFilteredAlpha:
         
         # 设置此期间的目录
         self.merged_period_dir = self.merged_dir / period_name
-        self.test_eval_period_dir = self.test_eval_dir / period_name
-        self.test_eval_period_dir.mkdir(parents=True, exist_ok=True)
+        self.test_period_dir = self.test_dir / period_name
+        self.eval_period_dir = self.eval_dir / period_name
+        self.test_period_dir.mkdir(parents=True, exist_ok=True)
+        self.eval_period_dir.mkdir(parents=True, exist_ok=True)
         
         print(f"开始对期间 {period_name} 进行测试评估")
         
@@ -214,6 +218,7 @@ class TestEvalFilteredAlpha:
                 for test_info in test_list:
                     mode = test_info['mode']
                     test_name = test_info['test_name']
+                    skip_exists = test_info.get('skip_exists', False)
                     
                     print(f"  测试配置: {test_name} (模式: {mode}) - 过滤器: {apply_filters_name}/{sub_dir}")
                     print(f"  将测试 {len(factor_names)} 个因子")
@@ -226,8 +231,8 @@ class TestEvalFilteredAlpha:
                     else:
                         raise NotImplementedError(f"不支持的模式: {mode}")
                     
-                    # 设置输出目录 - 调整为test_eval_period_dir
-                    test_result_dir = (self.test_eval_period_dir / 'test' / test_name / 
+                    # 设置输出目录 - 调整为test_period_dir
+                    test_result_dir = (self.test_period_dir / 'test' / test_name / 
                                       apply_filters_name / sub_dir)
                     test_result_dir.mkdir(parents=True, exist_ok=True)
                     
@@ -244,7 +249,7 @@ class TestEvalFilteredAlpha:
                     
                     # 使用test_multi批量测试所有因子
                     try:
-                        tester.test_multi_factors(factor_names)
+                        tester.test_multi_factors(skip_exists=skip_exists)
                         print(f"    成功测试 {len(factor_names)} 个因子")
                     except Exception as e:
                         print(f"    错误: 批量测试因子失败: {str(e)}")
@@ -283,7 +288,7 @@ class TestEvalFilteredAlpha:
                 raise NotImplementedError(f"不支持的模式: {mode}")
             
             # 设置输出目录
-            test_result_dir = self.test_eval_period_dir / 'test' / test_name / 'org_alpha'
+            test_result_dir = self.test_period_dir / 'test' / test_name / 'org_alpha'
             test_result_dir.mkdir(parents=True, exist_ok=True)
             
             # 创建测试器实例
@@ -325,7 +330,7 @@ class TestEvalFilteredAlpha:
         price_path = eval_config['price_path']
         
         # 设置评估输出目录
-        eval_result_dir = self.test_eval_period_dir / 'eval'
+        eval_result_dir = self.eval_period_dir / 'eval'
         eval_result_dir.mkdir(parents=True, exist_ok=True)
         
         # 准备所有评估任务
@@ -336,7 +341,7 @@ class TestEvalFilteredAlpha:
             test_name = test_info['test_name']
             mode = test_info['mode']
             
-            data_dir = (self.test_eval_period_dir / 'test' / test_name / 'org_alpha' / 
+            data_dir = (self.test_period_dir / 'test' / test_name / 'org_alpha' / 
                        'data')
             
             if data_dir.exists():
@@ -360,7 +365,7 @@ class TestEvalFilteredAlpha:
                     test_name = test_info['test_name']
                     mode = test_info['mode']
                     
-                    data_dir = (self.test_eval_period_dir / 'test' / test_name / 
+                    data_dir = (self.test_period_dir / 'test' / test_name / 
                                apply_filters_name / sub_dir / 'data')
                     
                     if data_dir.exists():

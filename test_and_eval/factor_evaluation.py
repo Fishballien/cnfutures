@@ -109,6 +109,7 @@ def eval_one_factor_one_period(factor_name, *, date_start, date_end, data_date_s
                                valid_prop_thresh, fee, price_data_path, mode='test'):
     res_dict = {
         'root_dir': processed_data_dir, 
+        'test_data_dir': data_dir,
         'test_name': test_name, 
         'tag_name': tag_name, 
         'process_name': process_name, 
