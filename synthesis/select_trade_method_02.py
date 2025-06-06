@@ -52,7 +52,7 @@ class TradeSelector:
     4. 进行回测验证
     """
     
-    def __init__(self, select_name: str, merge_type: str = None, merge_name: str = None):
+    def __init__(self, select_name: str, rolling_select_name: str,  merge_type: str = None, merge_name: str = None):
         """
         初始化因子选择器
         
@@ -70,7 +70,7 @@ class TradeSelector:
         self.param_dir = Path(self.path_config['param']) / 'select_trade_method'  # 参数目录
         
         # 创建结果存储目录结构
-        self.select_dir = self.result_dir / 'select_trade_method' / f'{merge_name}_{select_name}'  # 当前选择器的结果目录
+        self.select_dir = self.result_dir / 'select_trade_method' / f'{merge_name}_{select_name}_{rolling_select_name}'  # 当前选择器的结果目录
         self.selected_dir = self.select_dir / 'selected'  # 存储筛选结果的目录
         self.pos_dir = self.select_dir / 'pos'  # 存储持仓数据的目录
         self.selected_dir.mkdir(parents=True, exist_ok=True)  # 创建目录，如果已存在则不报错

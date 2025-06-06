@@ -109,7 +109,7 @@ def run_rolling_trade_select(select_name, rolling_select_name, pstart='20180101'
     
     # Initialize the trade selector with optional merge_type and merge_name
     print(f"Initializing TradeSelector with method: {select_name}")
-    ts = TradeSelector(select_name, merge_type=merge_type, merge_name=merge_name)
+    ts = TradeSelector(select_name, rolling_select_name, merge_type=merge_type, merge_name=merge_name)
     
     # Run factor evaluation based on mode
     if mode == 'rolling':

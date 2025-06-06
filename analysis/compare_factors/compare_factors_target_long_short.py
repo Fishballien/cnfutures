@@ -986,7 +986,7 @@ if __name__ == "__main__":
     # ]
     
     # 方式2: 使用新的dict格式，支持自定义路径
-    compare_name = "compare_oa_and_netna_and_ot"
+    compare_name = "compare_dp"
     factor_info_list_dict = [
         # {
         #     "tag_name": None,
@@ -1018,12 +1018,12 @@ if __name__ == "__main__":
           "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w245d_q0.02_i5-minmax_w245d_q0.02",
           "test_name": "icim_intraday_noscale_around_op05cl0",
           "is_target": True,
-          "shortcut": 'order',
+          "shortcut": 'avg_imb01_dp2',
         },
         {
           "index": 1,
           "tag_name": "zxt_select_250509",
-          "process_name": "Batch20_250508/org_trans_v2_TS_dod_all_v1_TS_final_scale_v0",
+          "process_name": "Batch18_250425/org_trans_v1_TS_dod_all_v1_TS_final_scale_v0",
           "factor_name": "TimeRangeOANet_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w245d_q0.02_i5-minmax_w245d_q0.02",
           "test_name": "icim_intraday_noscale_around_op05cl0",
           "is_target": False,
@@ -1032,7 +1032,7 @@ if __name__ == "__main__":
         {
           "index": 2,
           "tag_name": "zxt_select_250509",
-          "process_name": "Batch25_250523/org_trans_v1_TS_dod_all_v1_TS_final_scale_v0",
+          "process_name": "Batch18_250425/org_trans_v1_TS_dod_all_v1_TS_final_scale_v0",
           "factor_name": "TimeRangeOTNet_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w245d_q0.02_i5-minmax_w245d_q0.02",
           "test_name": "icim_intraday_noscale_around_op05cl0",
           "is_target": False,

@@ -151,13 +151,15 @@ class AppliedFiltersMerger:
         return config
     
     def _init_utils(self):
-        # 从配置中读取两个不同的预处理参数
-        group_preprocess_params = self.config['group_preprocess_params']
+        # 从配置中读取三个不同的预处理参数
         factor_preprocess_params = self.config['factor_preprocess_params']
+        group_preprocess_params = self.config['group_preprocess_params']
+        final_preprocess_params = self.config['final_preprocess_params']
         
-        # 初始化两个不同的标准化函数
-        self.group_normalization_func = partial(ts_normalize, param=group_preprocess_params)
+        # 初始化三个不同的标准化函数
         self.factor_normalization_func = partial(ts_normalize, param=factor_preprocess_params)
+        self.group_normalization_func = partial(ts_normalize, param=group_preprocess_params)
+        self.final_normalization_func = partial(ts_normalize, param=final_preprocess_params)
         
     def run_one_period(self, date_start, date_end):
         # 生成期间名称
@@ -221,8 +223,8 @@ class AppliedFiltersMerger:
         
         # 计算跨组的总体平均值
         factor_avg = compute_dataframe_dict_average(factor_dict, weight_dict)
-        # 使用组标准化函数来标准化最终结果
-        factor_scaled = self.group_normalization_func(factor_avg).replace([-np.inf, np.inf], np.nan).fillna(0)
+        # 使用最终标准化函数来标准化最终结果
+        factor_scaled = self.final_normalization_func(factor_avg).replace([-np.inf, np.inf], np.nan).fillna(0)
         
         # 保存结果
         factor_scaled.to_parquet(output_path)

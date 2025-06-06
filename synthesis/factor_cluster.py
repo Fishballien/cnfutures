@@ -469,7 +469,7 @@ def cluster_factors(selected_factor_info, date_start, date_end, test_dir,
     cluster_params : dict, optional
         传递给scipy.cluster.hierarchy.fcluster的参数。
         例如: {'t': 0.5, 'criterion': 'distance'}
-        默认为None时会使用{'t': 0.5, 'criterion': 'distance'}
+        如果为None，则每个因子各为一组（不进行聚类）
         
     linkage_method : str, optional
         计算连接时使用的方法。选项包括'single', 'complete', 'average', 'weighted'等。
@@ -486,13 +486,18 @@ def cluster_factors(selected_factor_info, date_start, date_end, test_dir,
         默认为'all'
         
     col : str, optional
-        从GP数据中提取的列名，默认为'avg'
+        从GP数据中提取的列名，默认为'return'
     
     返回值:
     --------
-    pandas.DataFrame
-        添加了聚类分组结果的因子信息DataFrame，增加了'cluster'列表示聚类分组
+    numpy.ndarray
+        聚类分组结果数组，每个元素表示对应因子的分组编号
     """
+    # 如果cluster_params为None，则每个因子各为一组
+    if cluster_params is None:
+        cluster_indices = list(range(len(selected_factor_info)))
+        return cluster_indices
+    
     # 提取GP矩阵
     gp_matrix = extract_gp_matrix(
         selected_factor_info, 

@@ -156,7 +156,7 @@ class TestEvalFilteredAlpha:
         # 设置此期间的目录
         self.merged_period_dir = self.merged_dir / period_name
         self.test_period_dir = self.test_dir / period_name
-        self.eval_period_dir = self.eval_dir / period_name
+        self.eval_period_dir = self.eval_dir / eval_period_name
         self.test_period_dir.mkdir(parents=True, exist_ok=True)
         self.eval_period_dir.mkdir(parents=True, exist_ok=True)
         
