@@ -386,6 +386,7 @@ def execute_test(test_info, process_name, factor_data_dir, result_dir, select_na
     # 解析测试配置
     mode = test_info['mode']  # 测试模式：test或trade
     test_name = test_info['test_name']  # 测试名称
+    date_start = test_info.get('date_start')
     
     # 根据模式选择测试类
     if mode == 'test':
@@ -399,5 +400,5 @@ def execute_test(test_info, process_name, factor_data_dir, result_dir, select_na
 
     # 初始化测试器并执行测试
     ft = test_class(process_name, None, factor_data_dir, test_name=test_name, result_dir=result_dir)
-    ft.test_one_factor(f'pos_{select_name}')
+    ft.test_one_factor(f'pos_{select_name}', date_start=date_start)
     return f"已完成 {test_name} 测试，模式: {mode}"

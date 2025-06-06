@@ -214,8 +214,8 @@ class FactorMerger:
         
         # 检查是否已经存在
         output_path = merged_period_dir / f'avg_predict_{period_name}.parquet'
-        # if os.path.exists(output_path):
-        #     return
+        if os.path.exists(output_path):
+            return
         
         # 最终选定因子的路径
         final_selected_factors_path = select_period_dir / 'final_selected_factors.csv'

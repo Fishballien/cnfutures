@@ -160,6 +160,44 @@ class AppliedFiltersSelector:
         
         return filtered_data
     
+    def _get_factor_data_dir(self, factor_row):
+        """
+        根据因子信息获取数据目录路径，参考cluster_factors中的逻辑
+        
+        参数:
+            factor_row: 包含因子信息的行数据
+            
+        返回:
+            Path: 数据目录路径
+        """
+        # 检查是否存在test_data_dir列
+        has_test_data_dir = 'test_data_dir' in factor_row.index
+        
+        if has_test_data_dir:
+            test_data_dir = factor_row.get('test_data_dir')
+            # 检查test_data_dir是否存在且不为空
+            if pd.notna(test_data_dir) and str(test_data_dir).strip():
+                # 直接使用test_data_dir作为数据目录的父目录
+                return Path(test_data_dir).parent
+        
+        # 如果没有test_data_dir或者为空，使用传统的路径构建方式
+        # 对于applied filters，我们需要从eval结果中推断路径结构
+        test_name = factor_row.get('test_name', '')
+        tag_name = factor_row.get('tag_name', '')
+        process_name = factor_row.get('process_name', '')
+        
+        # 构建传统路径：test_dir / test_name / tag_name / process_name
+        # 注意：这里我们没有test_dir，所以需要根据实际情况调整
+        # 可能需要从配置或其他地方获取基础路径
+        base_test_dir = self.result_dir / 'test'  # 假设基础测试目录
+        
+        if isinstance(tag_name, str) and tag_name.strip():
+            target_dir = base_test_dir / test_name / tag_name / process_name
+        else:
+            target_dir = base_test_dir / test_name / process_name
+            
+        return target_dir
+    
     def run_one_period(self, date_start: str, date_end: str):
         """
         对指定期间运行筛选
@@ -287,11 +325,87 @@ class AppliedFiltersSelector:
         final_factors.to_csv(res_dir / 'final_selected_factors.csv', index=False)
         print(f"筛选结果已保存到: {res_dir / 'final_selected_factors.csv'}")
         
-        # 可选：复制相关文件（如果配置中启用）
+        # 复制相关文件（如果配置中启用）
         if self.config.get('copy_selected', False):
-            print("注意: 应用过滤器结果通常不复制文件，因为测试文件结构不同")
-            # 这里可以根据需要实现文件复制逻辑
-            # 但由于applied filters的文件结构与原始factors不同，可能需要特殊处理
+            print("开始复制筛选后的因子相关文件...")
+            
+            # 创建结果目录
+            res_selected_info_dir = res_selected_dir / 'factor_info'
+            res_selected_plot_dir = res_selected_dir / 'plot'
+            res_selected_info_dir.mkdir(parents=True, exist_ok=True)
+            res_selected_plot_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 收集所有需要复制的文件对
+            file_pairs = []
+            
+            # 遍历所有需要复制的因子
+            for idx in final_factors.index:
+                factor_name = final_factors.loc[idx, 'factor']
+                
+                try:
+                    # 获取因子数据目录
+                    target_dir = self._get_factor_data_dir(final_factors.loc[idx])
+                    
+                    # 收集因子信息图表文件
+                    factor_info_plot_dir = target_dir / 'factor_info'
+                    if factor_info_plot_dir.exists():
+                        factor_info_files = find_files_with_prefix(factor_info_plot_dir, factor_name)
+                        
+                        for file_name in factor_info_files:
+                            source_file = factor_info_plot_dir / file_name
+                            target_file = res_selected_info_dir / file_name
+                            if source_file.exists():
+                                file_pairs.append((source_file, target_file))
+                    else:
+                        print(f"警告: 因子信息目录不存在: {factor_info_plot_dir}")
+                    
+                    # 收集因子图表文件
+                    factor_plot_source = target_dir / 'plot' / f'{factor_name}.jpg'
+                    factor_plot_target = res_selected_plot_dir / f'{factor_name}.jpg'
+                    
+                    if factor_plot_source.exists():
+                        file_pairs.append((factor_plot_source, factor_plot_target))
+                    else:
+                        print(f"警告: 因子图表文件不存在: {factor_plot_source}")
+                        
+                except Exception as e:
+                    print(f"警告: 处理因子 {factor_name} 时发生错误: {e}")
+                    continue
+            
+            # 使用多线程并行复制所有文件
+            if file_pairs:
+                print(f"开始并行复制 {len(file_pairs)} 个文件...")
+                start_time = time.time()
+                
+                # 使用ThreadPoolExecutor进行并行复制
+                with ThreadPoolExecutor(max_workers=min(len(file_pairs), 8)) as executor:
+                    # 为每个文件对提交复制任务
+                    future_to_file = {
+                        executor.submit(copy_file, src, dst): (src, dst) 
+                        for src, dst in file_pairs
+                    }
+                    
+                    # 收集结果
+                    success_count = 0
+                    for future in as_completed(future_to_file):
+                        src, dst = future_to_file[future]
+                        try:
+                            result = future.result()
+                            if result:
+                                success_count += 1
+                                print(f"成功复制: {src.name}")
+                            else:
+                                print(f"复制失败: {src.name}")
+                        except Exception as e:
+                            print(f"复制 {src.name} 时发生异常: {e}")
+                
+                end_time = time.time()
+                duration = end_time - start_time
+                print(f"复制完成! 成功: {success_count}/{len(file_pairs)}, 用时: {duration:.2f} 秒")
+            else:
+                print("没有找到需要复制的文件。")
+        else:
+            print("配置中未启用文件复制功能 (copy_selected=False)")
         
         print(f"已完成应用过滤器结果筛选，结果保存至: {res_dir}")
 

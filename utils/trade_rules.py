@@ -706,6 +706,7 @@ def _compute_positions_with_time_gaps_3_4(signal_values, time_gap_flags, day_end
     Numba-accelerated core function to compute positions for a single threshold combination.
     添加了day_end_flags参数用于识别每天的最后一个交易时间点（如14:55）
     修改了逻辑允许在平仓后立即开新仓位
+    修正：无论14:55前是否有仓位，都强制设置为平仓状态，不允许开新仓
     """
     positions = np.full(len(signal_values), np.nan)
     current_position = 0
@@ -714,11 +715,13 @@ def _compute_positions_with_time_gaps_3_4(signal_values, time_gap_flags, day_end
     for i in range(len(signal_values)):
         # 检查是否需要因时间间隔或日终而关闭头寸
         force_close = False
-        if ((i < len(signal_values) - 1 and time_gap_flags[i]) or day_end_flags[i]):
-            if (current_position < 0 and close_short) or (current_position > 0 and close_long):
-                # 平仓
-                current_position = 0
-                force_close = True
+        
+        # 如果是日终时间点（如14:55）或时间间隔间断点，强制平仓且不允许开新仓
+        if day_end_flags[i] or (i < len(signal_values) - 1 and time_gap_flags[i]):
+            if current_position != 0:
+                if (current_position < 0 and close_short) or (current_position > 0 and close_long):
+                    current_position = 0
+            force_close = True  # 无论之前是否有仓位，都设置force_close为True，不允许开新仓
         
         # 处理无效信号
         if np.isnan(signal_values[i]):
@@ -738,7 +741,8 @@ def _compute_positions_with_time_gaps_3_4(signal_values, time_gap_flags, day_end
                 current_position = 0  # 平空
         
         # 如果当前无头寸(原本就无头寸或刚刚平仓)，检查是否需要开新仓
-        if current_position == 0 and not force_close:  # 如果不是因为时间条件强制平仓，允许开新仓
+        # 关键修改：只有在不是强制平仓的情况下才允许开新仓
+        if current_position == 0 and not force_close:
             if signal_values[i] > openthres:
                 current_position = 1  # 开多
             elif signal_values[i] < -openthres:
@@ -816,6 +820,156 @@ def trade_rule_by_trigger_v3_4(signal, threshold_combinations, time_threshold_mi
     all_positions = _compute_all_positions_3_4(
         signal_values, time_gap_flags, day_end_flags, threshold_combinations_array,
         close_long, close_short, time_threshold_minutes or 0  # Use 0 as default if None
+    )
+    
+    # Compute average positions
+    avg_positions = np.nanmean(all_positions, axis=0)
+    
+    # Convert back to pandas Series
+    return pd.Series(avg_positions, index=signal.index)
+
+
+@jit(nopython=True)
+def _compute_positions_with_time_gaps_3_5(signal_values, time_gap_flags, day_end_flags, no_new_position_flags, 
+                                     openthres, closethres, close_long, close_short, time_threshold_minutes):
+    """
+    Numba-accelerated core function to compute positions for a single threshold combination.
+    添加了day_end_flags参数用于识别每天的最后一个交易时间点（如14:55）
+    添加了no_new_position_flags参数用于识别禁止开新仓的时间点（如14:30）
+    修改了逻辑允许在平仓后立即开新仓位
+    
+    逻辑说明：
+    - day_end_flags: 强制平仓且不允许开新仓
+    - no_new_position_flags: 不允许开新仓，但老仓位根据信号正常平仓
+    - time_gap_flags: 强制平仓且不允许开新仓
+    """
+    positions = np.full(len(signal_values), np.nan)
+    current_position = 0
+    has_valid_signal = False
+    
+    for i in range(len(signal_values)):
+        # 检查是否需要因时间间隔或日终而关闭头寸
+        force_close = False
+        no_new_position = False
+        
+        # 如果是日终时间点（如14:55）或时间间隔间断点，强制平仓且不允许开新仓
+        if day_end_flags[i] or (i < len(signal_values) - 1 and time_gap_flags[i]):
+            if current_position != 0:
+                if (current_position < 0 and close_short) or (current_position > 0 and close_long):
+                    current_position = 0
+            force_close = True  # 强制平仓且不允许开新仓
+        
+        # 如果是禁止开新仓时间点（如14:30），不允许开新仓但不强制平老仓位
+        elif no_new_position_flags[i]:
+            no_new_position = True  # 只是不允许开新仓，老仓位正常处理
+        
+        # 处理无效信号
+        if np.isnan(signal_values[i]):
+            if has_valid_signal:
+                positions[i] = current_position
+            continue
+        
+        # 标记遇到有效信号
+        has_valid_signal = True
+        
+        # 应用交易逻辑 - 先检查平仓条件
+        if current_position == 1:  # 多头
+            if signal_values[i] < closethres:
+                current_position = 0  # 平多
+        elif current_position == -1:  # 空头
+            if signal_values[i] > -closethres:
+                current_position = 0  # 平空
+        
+        # 如果当前无头寸(原本就无头寸或刚刚平仓)，检查是否需要开新仓
+        # 关键：只有在不是强制平仓且不是禁止开仓的情况下才允许开新仓
+        if current_position == 0 and not force_close and not no_new_position:
+            if signal_values[i] > openthres:
+                current_position = 1  # 开多
+            elif signal_values[i] < -openthres:
+                current_position = -1  # 开空
+        
+        positions[i] = current_position
+    
+    return positions
+
+@jit(nopython=True, parallel=True)
+def _compute_all_positions_3_5(signal_values, time_gap_flags, day_end_flags, no_new_position_flags, 
+                          threshold_combinations, close_long, close_short, time_threshold_minutes):
+    """
+    Numba-accelerated function to compute positions for all threshold combinations.
+    """
+    n_thresholds = len(threshold_combinations)
+    n_signals = len(signal_values)
+    
+    # Initialize output array
+    all_positions = np.full((n_thresholds, n_signals), np.nan)
+    
+    # Compute positions for each threshold combination in parallel
+    for i in prange(n_thresholds):  # Using prange for parallel execution
+        openthres = threshold_combinations[i, 0]
+        closethres = threshold_combinations[i, 1]
+        all_positions[i] = _compute_positions_with_time_gaps_3_5(
+            signal_values, time_gap_flags, day_end_flags, no_new_position_flags, 
+            openthres, closethres, close_long, close_short, time_threshold_minutes
+        )
+    
+    return all_positions
+
+def trade_rule_by_trigger_v3_5(signal, threshold_combinations, time_threshold_minutes=None, 
+                              close_long=True, close_short=True, end_time="14:55", 
+                              no_new_position_time="14:30"):
+    """
+    Numba-accelerated version of trade rule that supports both time gap and end-time position closing
+    并允许在同一时间切片内平仓后立即开仓
+    新增：支持禁止开新仓时间点
+    
+    Parameters:
+    signal (pd.Series): 带有datetime索引的输入信号
+    threshold_combinations (list of tuples): 每个元组包含(open_threshold, close_threshold)
+    time_threshold_minutes (int or float, optional): 超过该时间阈值（分钟）时将关闭头寸，如果为None则不启用此功能
+    close_long (bool): 在触发条件时是否关闭多头头寸(> 0)
+    close_short (bool): 在触发条件时是否关闭空头头寸(< 0)
+    end_time (str): 每日强制平仓的时间点，格式为"HH:MM"，如果为None则不启用此功能
+    no_new_position_time (str): 每日禁止开新仓的时间点，格式为"HH:MM"，如果为None则不启用此功能
+    
+    Returns:
+    pd.Series: 所有阈值组合的平均头寸
+    """
+    # Check input type
+    if not isinstance(signal, pd.Series):
+        raise TypeError("signal must be a pandas Series with datetime index")
+    
+    # Convert threshold_combinations to numpy array for Numba
+    threshold_combinations_array = np.array(threshold_combinations, dtype=np.float64)
+    
+    # Pre-compute time gaps
+    time_gap_flags = np.zeros(len(signal), dtype=np.bool_)
+    if time_threshold_minutes is not None:
+        time_threshold = pd.Timedelta(minutes=time_threshold_minutes)
+        time_diffs = signal.index.to_series().diff().shift(-1)
+        time_gap_flags = (time_diffs > time_threshold).values
+    
+    # Pre-compute day-end flags (强制平仓时间)
+    day_end_flags = np.zeros(len(signal), dtype=np.bool_)
+    if end_time is not None:
+        for i, timestamp in enumerate(signal.index):
+            if timestamp.strftime("%H:%M") == end_time:
+                day_end_flags[i] = True
+    
+    # Pre-compute no-new-position flags (禁止开新仓时间)
+    no_new_position_flags = np.zeros(len(signal), dtype=np.bool_)
+    if no_new_position_time is not None:
+        for i, timestamp in enumerate(signal.index):
+            if timestamp.strftime("%H:%M") >= no_new_position_time and timestamp.strftime("%H:%M") < end_time:
+                no_new_position_flags[i] = True
+    
+    # Get signal values as numpy array
+    signal_values = signal.values
+    
+    # Compute positions using Numba-accelerated function
+    all_positions = _compute_all_positions_3_5(
+        signal_values, time_gap_flags, day_end_flags, no_new_position_flags,
+        threshold_combinations_array, close_long, close_short, time_threshold_minutes or 0
     )
     
     # Compute average positions
