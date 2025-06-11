@@ -586,7 +586,7 @@ if __name__ == "__main__":
         'trade_rule_name': 'trade_rule_by_trigger_v3_4',  # Use newer trade rule as default
         'trade_rule_input': 'series',  # Use 'series' input for newer trade rules
         'trade_rule_param': {
-            'threshold_combinations': [[0.8, 0.0]],
+            'threshold_combinations': [[0.5, 0.0]],
             'time_threshold_minutes': 240,
             'close_long': True,
             'close_short': True

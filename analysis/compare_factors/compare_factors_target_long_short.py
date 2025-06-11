@@ -986,7 +986,7 @@ if __name__ == "__main__":
     # ]
     
     # 方式2: 使用新的dict格式，支持自定义路径
-    compare_name = "order_decomp_exclude_2"
+    compare_name = "szhk_test_batch18"
     factor_info_list_dict = [
         # {
         #     "tag_name": None,
@@ -1013,68 +1013,25 @@ if __name__ == "__main__":
         # },
         {
           "index": 0,
-          "tag_name": "zxt",
-          "process_name": "Batch30_250603/sum_imb_interact",
-          "factor_name": "TimeRangeDataTypes_p1.0_v40000_d1.0_t30-sum_side_dp2_selfimb",
-          "test_name": "icim_intraday_scale_around_op08cl0",
+          "tag_name": "zxt_select_250509",
+          "process_name": "Batch18_250425/org_trans_v1_TS_dod_all_v4_TS_final_scale_v1",
+          "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w365d_q0.02_i5-minmax_w365d_q0.02",
+          "test_name": "icim_intraday_noscale_op08cl0",
+          # "custom_path": null,
+          "shortcut": "order_dp2",
           "is_target": True,
-          "shortcut": 'order',
         },
         {
           "index": 1,
           "tag_name": "zxt",
-          "process_name": "Batch30_250603/sum_imb_interact",
-          "factor_name": "d1.0_minus_d2.0_d3.0_combo_imb",
-          "test_name": "icim_intraday_scale_around_op08cl0",
+          "process_name": "Batch18_250425/szhk_test",
+          "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-szhkavg_imb01-aggMinmax_w365d_q0.02_i5",
+          "test_name": "icim_intraday_noscale_op08cl0",
+          # "custom_path": null,
+          "shortcut": "order_szhk",
           "is_target": False,
-          "shortcut": 'order-remain-cancel',
         },
-        {
-          "index": 2,
-          "tag_name": "zxt",
-          "process_name": "Batch30_250603/sum_imb_interact",
-          "factor_name": "d1.0_minus_d2.0_d4.0_combo_imb",
-          "test_name": "icim_intraday_scale_around_op08cl0",
-          "is_target": False,
-          "shortcut": 'order-remain_acttrade',
-        },
-        {
-          "index": 3,
-          "tag_name": "zxt",
-          "process_name": "Batch30_250603/sum_imb_interact",
-          "factor_name": "d1.0_minus_d2.0_d5.0_combo_imb",
-          "test_name": "icim_intraday_scale_around_op08cl0",
-          "is_target": False,
-          "shortcut": 'order-remain-passtrade',
-        },
-        {
-          "index": 4,
-          "tag_name": "zxt",
-          "process_name": "Batch30_250603/sum_imb_interact",
-          "factor_name": "d1.0_minus_d3.0_d4.0_combo_imb",
-          "test_name": "icim_intraday_scale_around_op08cl0",
-          "is_target": False,
-          "shortcut": 'order-cancel-acttrade',
-        },
-        {
-          "index": 5,
-          "tag_name": "zxt",
-          "process_name": "Batch30_250603/sum_imb_interact",
-          "factor_name": "d1.0_minus_d3.0_d5.0_combo_imb",
-          "test_name": "icim_intraday_scale_around_op08cl0",
-          "is_target": False,
-          "shortcut": 'order-cancel-passtrade',
-        },
-        {
-          "index": 6,
-          "tag_name": "zxt",
-          "process_name": "Batch30_250603/sum_imb_interact",
-          "factor_name": "d1.0_minus_d4.0_d5.0_combo_imb",
-          "test_name": "icim_intraday_scale_around_op08cl0",
-          "is_target": False,
-          "shortcut": 'order-acttrade-passtrade',
-        },
-      
+        
     ]
     
     # 初始化比较工具
