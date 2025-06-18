@@ -62,6 +62,7 @@ class TradeSelector:
             merge_name (str, optional): 评估名称，如果为None则从配置文件中读取
         """
         self.select_name = select_name
+        self.rolling_select_name = rolling_select_name
         
         # 加载项目路径配置
         self.project_dir = project_dir  # 项目根目录，应该从外部导入
@@ -249,7 +250,7 @@ class TradeSelector:
             y_pred (pd.DataFrame): 新的预测结果DataFrame
         """
         # 汇总预测文件路径
-        pred_all_path = self.pos_dir / f'pos_{self.merge_name}_{self.select_name}.parquet'
+        pred_all_path = self.pos_dir / f'pos_{self.merge_name}_{self.select_name}_{self.rolling_select_name}.parquet'
         
         # 检查是否有已存在的汇总文件
         if os.path.exists(pred_all_path):
@@ -352,7 +353,7 @@ class TradeSelector:
                     process_name, 
                     factor_data_dir, 
                     result_dir, 
-                    f'{self.merge_name}_{self.select_name}',
+                    f'{self.merge_name}_{self.select_name}_{self.rolling_select_name}',
                 ): test_info for test_info in test_list
             }
             

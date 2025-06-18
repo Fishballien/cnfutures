@@ -36,7 +36,7 @@ from utils.dirutils import load_path_config
 from utils.timeutils import period_shortcut
 from utils.fsutils import find_files_with_prefix, copy_file
 from utils.datautils import deduplicate_nested_list
-from synthesis.filter_methods import filter_func_dynamic
+from synthesis.filter_methods import *
 from synthesis.factor_cluster import (cluster_factors, select_best_test_name)
 from utils.datautils import align_to_primary_by_col_list
 

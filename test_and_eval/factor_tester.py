@@ -332,7 +332,7 @@ class FactorTest:
             gp_dict[direction] = gp
             gpd_dict[direction] = gpd
             
-        self._save_pickle(gp_dict, 'gp')
+        # self._save_pickle(gp_dict, 'gp')
         self._save_pickle(gpd_dict, 'gpd')
         
         return gp_dict, gpd_dict
@@ -547,7 +547,8 @@ class FactorTesterByDiscrete(FactorTest):
             # align index & columns
             factor, rtn_1p, twap_price = self._align_his(factor, rtn_1p, twap_price)
             # get factor basic info
-            get_factor_basic_info(factor_name, factor, twap_price, group_pp_by_sp, self.data_dir, self.factor_info_dir)
+            if not self.skip_plot:
+                get_factor_basic_info(factor_name, factor, twap_price, group_pp_by_sp, self.data_dir, self.factor_info_dir)
             # scale
             factor = self._scale_factor(factor, rtn_1p)
             # align with factor 

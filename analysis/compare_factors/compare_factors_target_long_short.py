@@ -986,51 +986,62 @@ if __name__ == "__main__":
     # ]
     
     # 方式2: 使用新的dict格式，支持自定义路径
-    compare_name = "szhk_test_batch18"
+    compare_name = "till20_nsr22_tf_stock_corr_pow_neg"
     factor_info_list_dict = [
-        # {
-        #     "tag_name": None,
-        #     "process_name": None,
-        #     "factor_name": "avg_predict_150101_160301",
-        #     "test_name": None,
-        #     "custom_path": "/mnt/Data/xintang/CNIndexFutures/timeseries/factor_test/results/merge_selected_factors/batch_till20_batch_test_v2_icim_s1_m0/150101_160301/test/icim_intraday_noscale_around_op05cl0"  # 自定义路径，数据在 /path/to/custom/results/data/ 下
-        # },
-        # {
-        #   "index": 0,
-        #   "tag_name": "zxt_select_250509",
-        #   "process_name": "Batch18_250425/org_trans_v1_TS_dod_all_v1_TS_final_scale_v0",
-        #   "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w245d_q0.02_i5-minmax_w245d_q0.02",
-        #   "test_name": "icim_intraday_noscale_around_op05cl0",
-        #   "is_target": True
-        # },
-        # {
-        #   "index": 1,
-        #   "tag_name": "zxt",
-        #   "process_name": "Batch18_250425/tamtratio_lt3_avg",
-        #   "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-selfavg_tamt_v0_lt3_imb01-rollingAggMinuteMinMaxScale_w245d_q0.02_i5",
-        #   "test_name": "icim_intraday_scale_around_op05cl0",
-        #   "is_target": False
-        # },
         {
           "index": 0,
-          "tag_name": "zxt_select_250509",
-          "process_name": "Batch18_250425/org_trans_v1_TS_dod_all_v4_TS_final_scale_v1",
-          "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-avg_imb01_dp2-org-aggMinmax_w365d_q0.02_i5-minmax_w365d_q0.02",
-          "test_name": "icim_intraday_noscale_op08cl0",
-          # "custom_path": null,
-          "shortcut": "order_dp2",
-          "is_target": True,
+          "factor_name": "avg_predict_150101_160301",
+          "custom_path": "/mnt/Data/xintang/CNIndexFutures/timeseries/factor_test/results/merge_selected_factors/batch_till20_batch_test_v2_icim_s1_m0/150101_160301/test/icim_intraday_noscale_around_op05cl0",
+          "is_target": True
         },
         {
           "index": 1,
           "tag_name": "zxt",
-          "process_name": "Batch18_250425/szhk_test",
-          "factor_name": "TimeRangeValueOrderAmount_p1.0_v40000_t30-szhkavg_imb01-aggMinmax_w365d_q0.02_i5",
-          "test_name": "icim_intraday_noscale_op08cl0",
-          # "custom_path": null,
-          "shortcut": "order_szhk",
-          "is_target": False,
+          "process_name": "till20_nsr22_tf_stock_corr_pow",
+          "factor_name": "alpha_x_closeret_stock_index_corr_dp2_120_IntraQtl_60-power_g0.05_dneg",
+          "test_name": "icim_intraday_scale_around_op05cl0",
+          "is_target": False
         },
+        {
+          "index": 1,
+          "tag_name": "zxt",
+          "process_name": "till20_nsr22_tf_stock_corr_pow",
+          "factor_name": "alpha_x_closeret_stock_index_corr_dp2_120_IntraQtl_60-power_g0.1_dneg",
+          "test_name": "icim_intraday_scale_around_op05cl0",
+          "is_target": False
+        },
+        {
+          "index": 2,
+          "tag_name": "zxt",
+          "process_name": "till20_nsr22_tf_stock_corr_pow",
+          "factor_name": "alpha_x_closeret_stock_index_corr_dp2_120_IntraQtl_60-power_g0.2_dneg",
+          "test_name": "icim_intraday_scale_around_op05cl0",
+          "is_target": False
+        },
+        {
+          "index": 3,
+          "tag_name": "zxt",
+          "process_name": "till20_nsr22_tf_stock_corr_pow",
+          "factor_name": "alpha_x_closeret_stock_index_corr_dp2_120_IntraQtl_60-power_g0.3_dneg",
+          "test_name": "icim_intraday_scale_around_op05cl0",
+          "is_target": False
+        },
+        {
+          "index": 4,
+          "tag_name": "zxt",
+          "process_name": "till20_nsr22_tf_stock_corr_pow",
+          "factor_name": "alpha_x_closeret_stock_index_corr_dp2_120_IntraQtl_60-power_g0.4_dneg",
+          "test_name": "icim_intraday_scale_around_op05cl0",
+          "is_target": False
+        },
+        {
+          "index": 5,
+          "tag_name": "zxt",
+          "process_name": "till20_nsr22_tf_stock_corr_pow",
+          "factor_name": "alpha_x_closeret_stock_index_corr_dp2_120_IntraQtl_60-power_g0.5_dneg",
+          "test_name": "icim_intraday_scale_around_op05cl0",
+          "is_target": False
+        }
         
     ]
     
